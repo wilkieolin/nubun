@@ -17,3 +17,5 @@ dependencies:
     - mecab-python3
     - ipadic
     - unidic-lite
+    - nltk
+    - hdbscan

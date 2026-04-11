@@ -49,32 +49,89 @@ def label_radicals(R: np.ndarray, concept_embs: np.ndarray,
     return results
 
 
+COMPOSITION_TEST_CASES = [
+    # Concrete compounds - nature
+    ("fire", "mountain", "volcano"),
+    ("water", "fall", "waterfall"),
+    ("rain", "forest", "rainforest"),
+    ("rain", "bow", "rainbow"),
+    ("sun", "flower", "sunflower"),
+    ("sun", "light", "sunlight"),
+    ("moon", "light", "moonlight"),
+    ("star", "fish", "starfish"),
+    ("snow", "man", "snowman"),
+    ("sea", "food", "seafood"),
+    ("sea", "horse", "seahorse"),
+    # Concrete compounds - objects/places
+    ("book", "store", "bookstore"),
+    ("fire", "place", "fireplace"),
+    ("air", "port", "airport"),
+    ("foot", "ball", "football"),
+    ("bed", "room", "bedroom"),
+    ("door", "way", "doorway"),
+    ("head", "line", "headline"),
+    ("news", "paper", "newspaper"),
+    ("hand", "bag", "handbag"),
+    # Agent/person compounds
+    ("fire", "man", "fireman"),
+    ("police", "man", "policeman"),
+    ("sales", "man", "salesman"),
+    ("work", "man", "workman"),
+    # Abstract compounds
+    ("break", "through", "breakthrough"),
+    ("down", "fall", "downfall"),
+    ("out", "come", "outcome"),
+    ("over", "look", "overlook"),
+    ("under", "ground", "underground"),
+    ("back", "ground", "background"),
+    # Body/animal
+    ("eye", "brow", "eyebrow"),
+    ("finger", "print", "fingerprint"),
+    ("horse", "power", "horsepower"),
+    ("dog", "house", "doghouse"),
+    # Semantic analogies (a is to b as c is to d — test a+d-b≈c)
+    # These test whether radical algebra works
+    ("king", "queen", "prince"),  # king-male+female≈queen, but we test king+queen→prince-like
+    ("water", "ice", "cold"),
+    ("fire", "hot", "heat"),
+    # Technology/modern
+    ("air", "plane", "airplane"),
+    ("head", "phone", "headphone"),
+    ("key", "board", "keyboard"),
+    ("soft", "ware", "software"),
+    ("net", "work", "network"),
+    # Food/nature
+    ("straw", "berry", "strawberry"),
+    ("blue", "berry", "blueberry"),
+    ("pine", "apple", "pineapple"),
+    ("butter", "fly", "butterfly"),
+    ("grass", "land", "grassland"),
+    ("farm", "land", "farmland"),
+    # Building/shelter
+    ("green", "house", "greenhouse"),
+    ("light", "house", "lighthouse"),
+    ("ware", "house", "warehouse"),
+    ("court", "yard", "courtyard"),
+    # Weather/time
+    ("thunder", "storm", "thunderstorm"),
+    ("day", "light", "daylight"),
+    ("mid", "night", "midnight"),
+    ("week", "end", "weekend"),
+]
+
+
 def test_compositions(R: np.ndarray, C: np.ndarray,
                       concept_embs: np.ndarray, concept_labels: list[str],
                       ) -> list[dict]:
-    """Test whether natural compositions emerge from the radical structure."""
-    test_cases = [
-        ("fire", "mountain", "volcano"),
-        ("water", "fall", "waterfall"),
-        ("sun", "flower", "sunflower"),
-        ("book", "house", "library"),
-        ("fire", "fight", "firefighter"),
-        ("rain", "forest", "rainforest"),
-        ("sea", "food", "seafood"),
-        ("air", "port", "airport"),
-        ("foot", "ball", "football"),
-        ("eye", "glass", "glasses"),
-        ("moon", "light", "moonlight"),
-        ("earth", "quake", "earthquake"),
-        ("snow", "man", "snowman"),
-        ("hand", "write", "handwriting"),
-        ("star", "fish", "starfish"),
-    ]
+    """Test whether natural compositions emerge from the radical structure.
 
+    For each (a, b, expected) triple, compose a+b in radical space and check
+    how close the result is to the expected concept.
+    """
     label_to_idx = {label: i for i, label in enumerate(concept_labels)}
     results = []
 
-    for a_word, b_word, expected in test_cases:
+    for a_word, b_word, expected in COMPOSITION_TEST_CASES:
         a_idx = label_to_idx.get(a_word)
         b_idx = label_to_idx.get(b_word)
         exp_idx = label_to_idx.get(expected)
@@ -90,7 +147,15 @@ def test_compositions(R: np.ndarray, C: np.ndarray,
         # Compose: add the radical representations
         composed_radicals = C[a_idx] + C[b_idx]
         composed_emb = composed_radicals @ R
-        composed_emb = composed_emb / (np.linalg.norm(composed_emb) + 1e-8)
+        norm = np.linalg.norm(composed_emb)
+        if norm < 1e-8:
+            results.append({
+                "a": a_word, "b": b_word, "expected": expected,
+                "status": "zero_composition",
+                "predicted": None, "cosine_sim": None,
+            })
+            continue
+        composed_emb = composed_emb / norm
 
         # Find nearest concept
         sims = cosine_similarity(composed_emb.reshape(1, -1), concept_embs)[0]
@@ -100,6 +165,10 @@ def test_compositions(R: np.ndarray, C: np.ndarray,
         # Also check similarity to expected
         exp_sim = float(sims[exp_idx]) if exp_idx is not None else None
 
+        # Top-5 predictions for richer analysis
+        top5_idx = np.argsort(-sims)[:5]
+        top5 = [(concept_labels[i], float(sims[i])) for i in top5_idx]
+
         results.append({
             "a": a_word, "b": b_word, "expected": expected,
             "status": "ok",
@@ -107,6 +176,7 @@ def test_compositions(R: np.ndarray, C: np.ndarray,
             "predicted_sim": float(sims[predicted_idx]),
             "expected_sim": exp_sim,
             "match": predicted_word == expected,
+            "top5": top5,
         })
 
     return results
@@ -263,20 +333,36 @@ def main():
     comp_path = os.path.join(args.output_dir, "composition_examples.txt")
     with open(comp_path, "w") as f:
         for r in comp_results:
-            if r["status"] == "missing_inputs":
-                line = f"  {r['a']} + {r['b']} -> {r['expected']}  [SKIPPED: input not in vocabulary]"
+            if r["status"] in ("missing_inputs", "zero_composition"):
+                line = f"  {r['a']} + {r['b']} -> {r['expected']}  [SKIPPED: {r['status']}]"
             else:
                 match_str = "MATCH" if r["match"] else "miss"
                 line = (f"  {r['a']} + {r['b']} -> expected: {r['expected']}, "
                         f"predicted: {r['predicted']} (sim={r['predicted_sim']:.3f})  "
                         f"[{match_str}]")
                 if r["expected_sim"] is not None:
-                    line += f"  (expected sim={r['expected_sim']:.3f})"
+                    line += f"  (expected_sim={r['expected_sim']:.3f})"
+                # Show top-5
+                if "top5" in r:
+                    top5_str = ", ".join(f"{w}({s:.2f})" for w, s in r["top5"])
+                    f.write(f"     top5: {top5_str}\n")
             f.write(line + "\n")
             print(line)
-    n_testable = sum(1 for r in comp_results if r["status"] == "ok")
-    n_match = sum(1 for r in comp_results if r.get("match"))
-    print(f"  Exact matches: {n_match}/{n_testable}")
+
+    testable = [r for r in comp_results if r["status"] == "ok"]
+    n_match = sum(1 for r in testable if r["match"])
+    expected_sims = [r["expected_sim"] for r in testable if r["expected_sim"] is not None]
+
+    print(f"\n  Exact matches: {n_match}/{len(testable)}")
+    if expected_sims:
+        sims_arr = np.array(expected_sims)
+        print(f"  Compositional coherence (similarity to expected):")
+        print(f"    Mean:   {sims_arr.mean():.3f}")
+        print(f"    Median: {np.median(sims_arr):.3f}")
+        print(f"    P90:    {np.percentile(sims_arr, 90):.3f}")
+        print(f"    >0.7:   {(sims_arr > 0.7).sum()}/{len(sims_arr)}")
+    n_skipped = len(comp_results) - len(testable)
+    print(f"  Skipped: {n_skipped}/{len(comp_results)}")
     print(f"  Full results saved to {comp_path}")
 
     # 3. Pareto frontier plot
