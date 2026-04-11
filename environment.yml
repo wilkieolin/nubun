@@ -1,0 +1,19 @@
+name: nubun
+channels:
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+    - sentence-transformers
+    - wordfreq
+    - scikit-learn
+    - numpy
+    - pandas
+    - matplotlib
+    - seaborn
+    - umap-learn
+    - jieba
+    - mecab-python3
+    - ipadic
+    - unidic-lite
