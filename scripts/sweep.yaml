@@ -1,0 +1,79 @@
+# Phase 4 hyperparameter sweep config.
+# Each entry becomes one training run. Args are passed verbatim to train_vqvae.py
+# on top of the defaults defined in run_phase4.sh.
+
+defaults:
+  steps: 30000
+  batch_size: 32
+  bf16: true
+  use_ema: true
+  lambda_use: 0.01
+  reset_dead_every: 250
+  use_stop_mask: true
+  combine_splits: true
+  src_langs: all
+  tgt_langs: all
+  log_every: 500
+  eval_every: 1000
+  ckpt_every: 5000
+
+configs:
+  - name: baseline
+    args:
+      corpus: opus100
+      k: 256
+      m_max: 64
+      compression_ratio: 0.5
+      length_slack: 4
+      target_avg_len: 16
+      lambda_len_lr: 0.001
+
+  - name: small_K
+    args:
+      corpus: opus100
+      k: 128
+      m_max: 64
+      compression_ratio: 0.5
+      length_slack: 4
+      target_avg_len: 16
+      lambda_len_lr: 0.001
+
+  - name: large_K
+    args:
+      corpus: opus100
+      k: 512
+      m_max: 64
+      compression_ratio: 0.5
+      length_slack: 4
+      target_avg_len: 16
+      lambda_len_lr: 0.001
+
+  - name: tight_compression
+    args:
+      corpus: opus100
+      k: 256
+      m_max: 64
+      compression_ratio: 0.3
+      length_slack: 2
+      target_avg_len: 8
+      lambda_len_lr: 0.001
+
+  - name: loose_compression
+    args:
+      corpus: opus100
+      k: 256
+      m_max: 64
+      compression_ratio: 0.7
+      length_slack: 4
+      target_avg_len: 24
+      lambda_len_lr: 0.001
+
+  - name: flores_only
+    args:
+      corpus: flores
+      k: 256
+      m_max: 64
+      compression_ratio: 0.5
+      length_slack: 4
+      target_avg_len: 16
+      lambda_len_lr: 0.001
