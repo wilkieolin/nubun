@@ -21,12 +21,19 @@ from vqvae.data import combined_split, load_corpus
 from vqvae.model import VQVAE
 
 
+def compute_target_len(src_ids, pad, ratio, slack, m_max):
+    """Per-example hard length cap = ceil(src_len*ratio + slack), matching training."""
+    src_lens = (src_ids != pad).sum(dim=1).float()
+    return (src_lens * ratio + slack).ceil().long().clamp(min=1, max=m_max)
+
+
 @torch.no_grad()
 def evaluate_pair(
     model: VQVAE, val_ids: np.ndarray, src_lang: int, tgt_lang: int,
     pad_token_id: int, bos_token_id: int, eos_token_id: int,
     batch_size: int = 32, device: str = "cuda",
     token_weight: torch.Tensor | None = None,
+    ratio: float = 0.0, slack: int = 4,
 ) -> dict:
     """Compute teacher-forced token accuracy + bottleneck stats for (src, tgt).
 
@@ -62,7 +69,11 @@ def evaluate_pair(
         tgt_t = torch.from_numpy(tgt).to(device)
         lang_t = torch.full((B,), tgt_lang, dtype=torch.int64, device=device)
 
-        out = model(src_t, tgt_t, lang_t)
+        # Apply the SAME hard length cap used in training, so avg_bn is meaningful
+        # and eval matches the trained regime (the self-stop was never trained).
+        target_len = (compute_target_len(src_t, pad_token_id, ratio, slack,
+                                          model.encoder.m_max) if ratio > 0 else None)
+        out = model(src_t, tgt_t, lang_t, target_len=target_len)
         logits = out["logits"]
         recon = F.cross_entropy(
             logits.reshape(-1, logits.size(-1)),
@@ -150,9 +161,13 @@ def main():
         embedding_table=emb, use_stop_mask=cfg["use_stop_mask"],
         use_ema=cfg.get("use_ema", False), ema_decay=cfg.get("ema_decay", 0.99),
         use_semantic_head=cfg.get("use_semantic_head", False),
+        use_length_head=cfg.get("use_length_head", False),
     )
     model.load_state_dict(ckpt["model_state"], strict=True)
     model = model.to(args.device).eval()
+
+    ratio = float(cfg.get("compression_ratio", 0.0) or 0.0)
+    slack = int(cfg.get("length_slack", 4))
 
     token_weight = None
     if args.token_weights:
@@ -172,7 +187,7 @@ def main():
                 bos_token_id=meta.bos_token_id,
                 eos_token_id=meta.eos_token_id,
                 batch_size=args.batch_size, device=args.device,
-                token_weight=token_weight)
+                token_weight=token_weight, ratio=ratio, slack=slack)
             metrics["src"] = meta.short_codes[s]
             metrics["tgt"] = meta.short_codes[t]
             metrics["same_lang"] = (s == t)

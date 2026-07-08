@@ -241,6 +241,17 @@ def main():
     parser.add_argument("--token-weights", default="data/token_weights.pt",
                         help="Path to (vocab,) weight vector from build_token_weights.py")
 
+    # Phase 5c: word dropout (force code reliance) + length head (stop fix).
+    parser.add_argument("--word-dropout", type=float, default=0.0,
+                        help="Fraction of teacher-forced decoder input tokens replaced "
+                             "with <unk> during training (attacks posterior collapse).")
+    parser.add_argument("--word-dropout-token", type=int, default=3,
+                        help="Token id used to replace dropped inputs (3=<unk> for MiniLM)")
+    parser.add_argument("--use-length-head", action="store_true",
+                        help="Predict bottleneck length from pooled codes (stop fix / NAT prereq)")
+    parser.add_argument("--lambda-lenpred", type=float, default=0.1,
+                        help="Weight on the length-prediction MSE loss")
+
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--bf16", action="store_true",
@@ -308,6 +319,7 @@ def main():
         use_ema=args.use_ema, ema_decay=args.ema_decay,
         dead_threshold=args.dead_threshold,
         use_semantic_head=args.use_semantic_head,
+        use_length_head=args.use_length_head,
     )
     n_train = sum(p.numel() for p in model.parameters() if p.requires_grad)
     n_total = sum(p.numel() for p in model.parameters())
@@ -439,7 +451,7 @@ def main():
     epoch = 0
     t_start = time.time()
     log_buf = {"recon": 0.0, "commit": 0.0, "codebook": 0.0, "sem": 0.0,
-               "len_frac": 0.0, "avg_len": 0.0, "lagrangian": 0.0,
+               "lenpred": 0.0, "len_frac": 0.0, "avg_len": 0.0, "lagrangian": 0.0,
                "src_len": 0.0, "n": 0}
     while step < args.steps:
         epoch += 1
@@ -465,7 +477,9 @@ def main():
                 cm = nullcontext()
 
             with cm:
-                out = model(src_ids, tgt_ids, tgt_lang_id, target_len=target_len)
+                out = model(src_ids, tgt_ids, tgt_lang_id, target_len=target_len,
+                            word_dropout=args.word_dropout,
+                            mask_token_id=args.word_dropout_token)
                 recon = reconstruction_loss(
                     out["logits"], tgt_ids[:, 1:], meta.pad_token_id,
                     token_weight=token_weight)
@@ -480,6 +494,12 @@ def main():
                     tgt_emb = embed_sentences(st_model, src_ids, meta.pad_token_id)
                     sem_l = semantic_loss(out["sem_pred"], tgt_emb)
                     loss = loss + args.lambda_sem * sem_l
+
+                # Phase 5c: length-prediction loss (train length head vs the cap)
+                len_pred_l = torch.tensor(0.0, device=device)
+                if out["len_pred"] is not None and target_len is not None:
+                    len_pred_l = F.mse_loss(out["len_pred"].float(), target_len.float())
+                    loss = loss + args.lambda_lenpred * len_pred_l
 
                 # Bottleneck length stats — needed for both reporting and Lagrangian
                 first_stop = unwrapped.quantizer.first_stop_position(out["indices"]).float()
@@ -528,6 +548,7 @@ def main():
             if "codebook" in vq_l:
                 log_buf["codebook"] += vq_l["codebook"].item()
             log_buf["sem"] += sem_l.item()
+            log_buf["lenpred"] += len_pred_l.item()
             log_buf["len_frac"] += len_l.item()
             log_buf["avg_len"] += avg_len_batch.detach().item()
             log_buf["lagrangian"] += lagrangian_lambda
@@ -565,6 +586,7 @@ def main():
                     f"commit={log_buf['commit']/n:.4f}  "
                     f"codebook={log_buf['codebook']/n:.4f}  "
                     f"sem={log_buf['sem']/n:.4f}  "
+                    f"lenpred={log_buf['lenpred']/n:.3f}  "
                     f"avg_len={avg_len:.1f}/{args.m_max}  "
                     f"λ={log_buf['lagrangian']/n:.3f}  "
                     f"bits/sent={bits_per_sentence:.1f}  "

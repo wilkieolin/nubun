@@ -31,10 +31,13 @@ class VQVAE(nn.Module):
         dead_threshold: float = 0.01,
         use_semantic_head: bool = False,  # Phase 5: semantic-target loss
         d_semantic: int = 384,            # dim of frozen sentence-embedding target
+        use_length_head: bool = False,    # Phase 5c: predict length (stop fix / NAT prereq)
     ):
         super().__init__()
         self.use_stop_mask = use_stop_mask
         self.use_semantic_head = use_semantic_head
+        self.use_length_head = use_length_head
+        self.pad_token_id = pad_token_id
         self.encoder = Encoder(
             vocab_size=vocab_size, d_model=d_model, d_code=d_code,
             n_enc_layers=n_enc_layers, n_heads=n_heads, d_ff=d_ff,
@@ -60,6 +63,15 @@ class VQVAE(nn.Module):
                 nn.GELU(),
                 nn.Linear(d_code, d_semantic),
             )
+        # Phase 5c: predict bottleneck length from the pooled codes. Fixes the
+        # (untrained) self-stop and gives content-determined length; also the
+        # prerequisite for a future non-autoregressive decoder.
+        if use_length_head:
+            self.length_head = nn.Sequential(
+                nn.Linear(d_code, d_code),
+                nn.GELU(),
+                nn.Linear(d_code, 1),
+            )
 
     def forward(
         self,
@@ -67,6 +79,8 @@ class VQVAE(nn.Module):
         tgt_ids: torch.Tensor,
         tgt_lang_id: torch.Tensor,
         target_len: torch.Tensor | None = None,
+        word_dropout: float = 0.0,
+        mask_token_id: int = 3,
     ) -> dict:
         """If target_len is provided (per-example, B-shaped), positions
         >= target_len[i] are forced to <stop> after quantization. Used
@@ -87,16 +101,28 @@ class VQVAE(nn.Module):
         else:
             mem_mask = torch.ones_like(indices, dtype=torch.bool)
 
-        # Phase 5: masked-mean-pool the quantized bottleneck → semantic prediction.
-        # Gradients flow through z_q (straight-through) into encoder + codebook.
+        # Phase 5/5c: masked-mean-pool the quantized bottleneck for the auxiliary
+        # heads. Gradients flow through z_q (straight-through) into encoder + codebook.
         sem_pred = None
-        if self.use_semantic_head:
+        len_pred = None
+        if self.use_semantic_head or self.use_length_head:
             mask_f = mem_mask.unsqueeze(-1).to(z_q.dtype)          # (B, M, 1)
             pooled = (z_q * mask_f).sum(dim=1) / mask_f.sum(dim=1).clamp(min=1.0)
-            sem_pred = self.semantic_head(pooled)                  # (B, d_semantic)
+            if self.use_semantic_head:
+                sem_pred = self.semantic_head(pooled)              # (B, d_semantic)
+            if self.use_length_head:
+                len_pred = self.length_head(pooled).squeeze(-1)    # (B,)
 
-        # Teacher-forced: feed tgt[:, :-1], predict tgt[:, 1:]
-        logits = self.decoder(z_q, mem_mask, tgt_ids[:, :-1], tgt_lang_id)
+        # Phase 5c: word dropout — randomly replace teacher-forced decoder input
+        # tokens with <unk> so the decoder can't lean on the gold prefix and must
+        # read the codes (directly attacks the measured posterior collapse).
+        dec_in = tgt_ids[:, :-1]
+        if self.training and word_dropout > 0.0:
+            drop = (torch.rand_like(dec_in, dtype=torch.float) < word_dropout) & \
+                   (dec_in != self.pad_token_id)
+            dec_in = torch.where(drop, torch.full_like(dec_in, mask_token_id), dec_in)
+
+        logits = self.decoder(z_q, mem_mask, dec_in, tgt_lang_id)
         return {
             "logits": logits,
             "indices": indices,
@@ -106,6 +132,7 @@ class VQVAE(nn.Module):
             "usage": usage,
             "mem_mask": mem_mask,
             "sem_pred": sem_pred,
+            "len_pred": len_pred,
         }
 
 

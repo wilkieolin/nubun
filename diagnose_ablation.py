@@ -145,6 +145,7 @@ def main():
         embedding_table=emb, use_stop_mask=cfg["use_stop_mask"],
         use_ema=cfg.get("use_ema", False), ema_decay=cfg.get("ema_decay", 0.99),
         use_semantic_head=cfg.get("use_semantic_head", False),
+        use_length_head=cfg.get("use_length_head", False),
     )
     model.load_state_dict(ckpt["model_state"], strict=True)
     model = model.to(args.device).eval()
