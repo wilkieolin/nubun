@@ -26,13 +26,22 @@ def evaluate_pair(
     model: VQVAE, val_ids: np.ndarray, src_lang: int, tgt_lang: int,
     pad_token_id: int, bos_token_id: int, eos_token_id: int,
     batch_size: int = 32, device: str = "cuda",
+    token_weight: torch.Tensor | None = None,
 ) -> dict:
-    """Compute teacher-forced token accuracy + bottleneck stats for (src, tgt)."""
+    """Compute teacher-forced token accuracy + bottleneck stats for (src, tgt).
+
+    If token_weight is given, also computes content_accuracy: token correctness
+    weighted by token_weight[target] (punctuation ~0, content ~1). This is the
+    fair reconstruction measure when the model was trained with weighted CE and
+    deliberately ignores punctuation — raw token_accuracy understates it.
+    """
     n = val_ids.shape[0]
     total_correct = 0
     total_count = 0
     total_recon = 0.0
     total_batches = 0
+    content_correct = 0.0
+    content_weight = 0.0
     bn_lengths = []
     code_counts = torch.zeros(model.quantizer.k, device=device)
 
@@ -60,10 +69,17 @@ def evaluate_pair(
             tgt_t[:, 1:].reshape(-1), ignore_index=pad_token_id)
         total_recon += recon.item()
         preds = logits.argmax(dim=-1)
-        mask = tgt_t[:, 1:] != pad_token_id
-        total_correct += ((preds == tgt_t[:, 1:]) & mask).sum().item()
+        gold = tgt_t[:, 1:]
+        mask = gold != pad_token_id
+        correct = (preds == gold) & mask
+        total_correct += correct.sum().item()
         total_count += mask.sum().item()
         total_batches += 1
+
+        if token_weight is not None:
+            w = token_weight[gold] * mask.to(token_weight.dtype)   # (B, T-1)
+            content_correct += (correct.to(w.dtype) * w).sum().item()
+            content_weight += w.sum().item()
 
         # Bottleneck lengths (positions before first <stop>)
         if model.use_stop_mask:
@@ -77,6 +93,8 @@ def evaluate_pair(
     return {
         "n_examples": n,
         "token_accuracy": total_correct / max(1, total_count),
+        "content_accuracy": (content_correct / content_weight)
+                            if content_weight > 0 else float("nan"),
         "recon_loss": total_recon / max(1, total_batches),
         "avg_bottleneck_len": float(np.mean(bn_lengths)) if bn_lengths else float(model.encoder.m_max),
         "codes_used": used,
@@ -97,6 +115,10 @@ def main():
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--output", default="results/vqvae_eval.txt")
+    parser.add_argument("--token-weights", default=None,
+                        help="Optional (vocab,) weights from build_token_weights.py; "
+                             "enables content-weighted accuracy (fair metric when the "
+                             "model was trained with weighted CE).")
     args = parser.parse_args()
 
     print(f"Loading checkpoint: {args.checkpoint}")
@@ -132,6 +154,11 @@ def main():
     model.load_state_dict(ckpt["model_state"], strict=True)
     model = model.to(args.device).eval()
 
+    token_weight = None
+    if args.token_weights:
+        print(f"Loading token weights: {args.token_weights}")
+        token_weight = torch.load(args.token_weights, map_location="cpu").to(args.device)
+
     n_lang = len(meta.short_codes)
     rows = []
 
@@ -144,20 +171,24 @@ def main():
                 pad_token_id=meta.pad_token_id,
                 bos_token_id=meta.bos_token_id,
                 eos_token_id=meta.eos_token_id,
-                batch_size=args.batch_size, device=args.device)
+                batch_size=args.batch_size, device=args.device,
+                token_weight=token_weight)
             metrics["src"] = meta.short_codes[s]
             metrics["tgt"] = meta.short_codes[t]
             metrics["same_lang"] = (s == t)
             rows.append(metrics)
             print(f"acc={metrics['token_accuracy']:.3f}  "
+                  f"c_acc={metrics['content_accuracy']:.3f}  "
                   f"perp={metrics['code_perplexity']:.1f}  "
                   f"used={metrics['codes_used']}")
 
     same_acc = np.mean([r["token_accuracy"] for r in rows if r["same_lang"]])
     cross_acc = np.mean([r["token_accuracy"] for r in rows if not r["same_lang"]])
+    same_cacc = np.nanmean([r["content_accuracy"] for r in rows if r["same_lang"]])
+    cross_cacc = np.nanmean([r["content_accuracy"] for r in rows if not r["same_lang"]])
     print(f"\nSummary:")
-    print(f"  same-lang acc avg: {same_acc:.3f}")
-    print(f"  cross-lang acc avg: {cross_acc:.3f}")
+    print(f"  same-lang acc avg:  {same_acc:.3f}   content-acc: {same_cacc:.3f}")
+    print(f"  cross-lang acc avg: {cross_acc:.3f}   content-acc: {cross_cacc:.3f}")
     if rows[0]["avg_bottleneck_len"] != model.encoder.m_max:
         avg_bn = np.mean([r["avg_bottleneck_len"] for r in rows])
         print(f"  avg bottleneck length: {avg_bn:.1f} / {model.encoder.m_max}")
@@ -167,14 +198,15 @@ def main():
         f.write(f"VQ-VAE evaluation: {args.checkpoint}\n")
         f.write(f"trained for {ckpt['step']} steps\n")
         f.write("=" * 72 + "\n\n")
-        f.write(f"{'src':>4s} {'tgt':>4s} {'acc':>8s} {'recon':>8s} "
+        f.write(f"{'src':>4s} {'tgt':>4s} {'acc':>8s} {'c_acc':>8s} {'recon':>8s} "
                 f"{'codes':>8s} {'perp':>8s} {'avg_bn':>8s}\n")
         for r in rows:
             f.write(f"{r['src']:>4s} {r['tgt']:>4s} {r['token_accuracy']:>8.3f} "
+                    f"{r['content_accuracy']:>8.3f} "
                     f"{r['recon_loss']:>8.3f} {r['codes_used']:>8d} "
                     f"{r['code_perplexity']:>8.1f} {r['avg_bottleneck_len']:>8.2f}\n")
-        f.write(f"\nsame-lang avg acc:  {same_acc:.4f}\n")
-        f.write(f"cross-lang avg acc: {cross_acc:.4f}\n")
+        f.write(f"\nsame-lang  avg acc: {same_acc:.4f}   content-acc: {same_cacc:.4f}\n")
+        f.write(f"cross-lang avg acc: {cross_acc:.4f}   content-acc: {cross_cacc:.4f}\n")
     print(f"\nSaved to {args.output}")
 
 
