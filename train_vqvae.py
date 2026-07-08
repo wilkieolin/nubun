@@ -233,6 +233,14 @@ def main():
                         default="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
                         help="Frozen sentence encoder used to produce targets (P5)")
 
+    # Phase 5b: frequency-weighted token-CE. Downweights punctuation/function
+    # tokens in the reconstruction loss so it stops rewarding boilerplate and
+    # pulls the same direction as the semantic loss.
+    parser.add_argument("--use-token-weights", action="store_true",
+                        help="Apply per-token frequency weights to reconstruction CE (P5b)")
+    parser.add_argument("--token-weights", default="data/token_weights.pt",
+                        help="Path to (vocab,) weight vector from build_token_weights.py")
+
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--bf16", action="store_true",
@@ -330,6 +338,14 @@ def main():
         for p in st_model.parameters():
             p.requires_grad = False
         log(f"  semantic target dim: {st_model.config.hidden_size}")
+
+    # Phase 5b: per-token frequency weights for the reconstruction loss.
+    token_weight = None
+    if args.use_token_weights:
+        log(f"\nLoading token weights {args.token_weights}...")
+        token_weight = torch.load(args.token_weights, map_location="cpu").to(device)
+        log(f"  nonzero weights: {int((token_weight > 0).sum())}/{token_weight.numel()}  "
+            f"mean_over_seen~{float(token_weight[token_weight > 0].mean()):.3f}")
 
     # Now that model + buffers are built identically on every rank, re-seed
     # torch with the rank offset so dropout and any stochastic ops differ.
@@ -451,7 +467,8 @@ def main():
             with cm:
                 out = model(src_ids, tgt_ids, tgt_lang_id, target_len=target_len)
                 recon = reconstruction_loss(
-                    out["logits"], tgt_ids[:, 1:], meta.pad_token_id)
+                    out["logits"], tgt_ids[:, 1:], meta.pad_token_id,
+                    token_weight=token_weight)
                 vq_l = out["vq_losses"]
                 loss = recon + vq_l["commit"]
                 if "codebook" in vq_l:

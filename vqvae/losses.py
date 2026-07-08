@@ -8,12 +8,25 @@ def reconstruction_loss(
     logits: torch.Tensor,        # (B, T, V)
     targets: torch.Tensor,        # (B, T)  shifted target ids
     pad_token_id: int,
+    token_weight: torch.Tensor | None = None,  # (V,) per-token loss weight (P5b)
 ) -> torch.Tensor:
-    return F.cross_entropy(
-        logits.reshape(-1, logits.size(-1)),
-        targets.reshape(-1),
-        ignore_index=pad_token_id,
-    )
+    """Cross-entropy over target tokens.
+
+    If token_weight is given (Phase 5b), each target token's loss is scaled by
+    token_weight[target], then averaged as a weighted mean over non-pad
+    positions. Downweighting frequent punctuation/function tokens stops them
+    from dominating the gradient, so the bottleneck must encode content.
+    """
+    logits2d = logits.reshape(-1, logits.size(-1))
+    targets1d = targets.reshape(-1)
+    if token_weight is None:
+        return F.cross_entropy(logits2d, targets1d, ignore_index=pad_token_id)
+
+    ce = F.cross_entropy(logits2d, targets1d, ignore_index=pad_token_id,
+                         reduction="none")               # (N,), 0 at pad
+    w = token_weight[targets1d]                          # (N,)
+    w = w * (targets1d != pad_token_id).to(w.dtype)      # exclude pad from denom
+    return (ce * w).sum() / w.sum().clamp(min=1.0)
 
 
 def length_penalty(
