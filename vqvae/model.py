@@ -2,9 +2,11 @@
 
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 from .decoder import Decoder
 from .encoder import Encoder
+from .nat_decoder import NATDecoder
 from .quantizer import VectorQuantizer
 
 
@@ -34,6 +36,7 @@ class VQVAE(nn.Module):
         use_length_head: bool = False,    # Phase 5c: predict length (stop fix / NAT prereq)
         no_vq: bool = False,              # Phase 6 B1: skip quantization (continuous z_e -> decoder)
         no_code: bool = False,            # Phase 6 B0: zero the bottleneck (LM lower bound)
+        decoder_type: str = "ar",         # Phase 6 B3: "ar" | "nat" (non-autoregressive)
     ):
         super().__init__()
         self.use_stop_mask = use_stop_mask
@@ -41,6 +44,7 @@ class VQVAE(nn.Module):
         self.use_length_head = use_length_head
         self.no_vq = no_vq
         self.no_code = no_code
+        self.decoder_type = decoder_type
         self.pad_token_id = pad_token_id
         self.encoder = Encoder(
             vocab_size=vocab_size, d_model=d_model, d_code=d_code,
@@ -52,12 +56,20 @@ class VQVAE(nn.Module):
             k=k, d_code=d_code, beta_commit=beta_commit,
             use_ema=use_ema, ema_decay=ema_decay,
             dead_threshold=dead_threshold)
-        self.decoder = Decoder(
-            vocab_size=vocab_size, n_langs=n_langs, d_model=d_model,
-            d_code=d_code, n_dec_layers=n_dec_layers, n_heads=n_heads,
-            d_ff=d_ff, dropout=dropout, pad_token_id=pad_token_id,
-            embedding_table=embedding_table,
-        )
+        if decoder_type == "nat":
+            self.decoder = NATDecoder(
+                vocab_size=vocab_size, n_langs=n_langs, d_model=d_model,
+                d_code=d_code, n_dec_layers=n_dec_layers, n_heads=n_heads,
+                d_ff=d_ff, dropout=dropout, pad_token_id=pad_token_id,
+                embedding_table=embedding_table,
+            )
+        else:
+            self.decoder = Decoder(
+                vocab_size=vocab_size, n_langs=n_langs, d_model=d_model,
+                d_code=d_code, n_dec_layers=n_dec_layers, n_heads=n_heads,
+                d_ff=d_ff, dropout=dropout, pad_token_id=pad_token_id,
+                embedding_table=embedding_table,
+            )
         # Phase 5: project the (masked-mean-pooled) quantized bottleneck to the
         # frozen sentence-embedding space, so a cosine loss can pressure the
         # codes toward meaning rather than high-frequency token boilerplate.
@@ -133,16 +145,28 @@ class VQVAE(nn.Module):
             if self.use_length_head:
                 len_pred = self.length_head(pooled).squeeze(-1)    # (B,)
 
-        # Phase 5c: word dropout — randomly replace teacher-forced decoder input
-        # tokens with <unk> so the decoder can't lean on the gold prefix and must
-        # read the codes (directly attacks the measured posterior collapse).
-        dec_in = tgt_ids[:, :-1]
-        if self.training and word_dropout > 0.0:
-            drop = (torch.rand_like(dec_in, dtype=torch.float) < word_dropout) & \
-                   (dec_in != self.pad_token_id)
-            dec_in = torch.where(drop, torch.full_like(dec_in, mask_token_id), dec_in)
-
-        logits = self.decoder(z_q, mem_mask, dec_in, tgt_lang_id)
+        if self.decoder_type == "nat":
+            # Phase 6 B3: non-autoregressive. No teacher-forced tokens — the decoder
+            # predicts all positions in parallel from the codes. Output grid aligns
+            # to the target body (drop BOS); train length = gold non-pad count.
+            tgt_body = tgt_ids[:, 1:]
+            w_full = tgt_body.shape[1]
+            out_len = (tgt_body != self.pad_token_id).sum(dim=1).clamp(min=1)
+            logits = self.decoder(z_q, mem_mask, out_len, tgt_lang_id)  # (B, T, V), T=out_len.max()
+            if logits.shape[1] < w_full:
+                # Pad time dim to full target width so the existing loss alignment
+                # holds; padded positions map to pad targets and are ignored by CE.
+                logits = F.pad(logits, (0, 0, 0, w_full - logits.shape[1]))
+        else:
+            # Phase 5c: word dropout — randomly replace teacher-forced decoder input
+            # tokens with <unk> so the decoder can't lean on the gold prefix and must
+            # read the codes (directly attacks the measured posterior collapse).
+            dec_in = tgt_ids[:, :-1]
+            if self.training and word_dropout > 0.0:
+                drop = (torch.rand_like(dec_in, dtype=torch.float) < word_dropout) & \
+                       (dec_in != self.pad_token_id)
+                dec_in = torch.where(drop, torch.full_like(dec_in, mask_token_id), dec_in)
+            logits = self.decoder(z_q, mem_mask, dec_in, tgt_lang_id)
         return {
             "logits": logits,
             "indices": indices,

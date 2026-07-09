@@ -119,6 +119,20 @@ def gold_ceiling(st_model, val_ids, langs, meta, device, batch_size):
 
 
 @torch.no_grad()
+def generate_nat(model, z_q, mem_mask, lang_t, src_len, bos, pad, max_len):
+    """Single parallel forward for the NAT decoder. No gold length at inference, so
+    the output grid length is estimated from source length (clamped)."""
+    out_len = src_len.clamp(min=1, max=max_len)
+    logits = model.decoder(z_q, mem_mask, out_len, lang_t)   # (B, T, V)
+    ids = logits.argmax(-1)                                  # (B, T)
+    T = ids.shape[1]
+    ar = torch.arange(T, device=ids.device).unsqueeze(0)
+    ids = torch.where(ar < out_len.unsqueeze(1), ids, torch.full_like(ids, pad))
+    bos_col = torch.full((ids.shape[0], 1), bos, dtype=torch.long, device=ids.device)
+    return torch.cat([bos_col, ids], dim=1)
+
+
+@torch.no_grad()
 def roundtrip_condition(model, st_model, val_ids, langs, meta, device,
                         ratio, slack, cond, max_gen_len, batch_size):
     """Mean round-trip cosine for one condition, split same/cross lang."""
@@ -149,8 +163,13 @@ def roundtrip_condition(model, st_model, val_ids, langs, meta, device,
                 elif cond != "real":
                     raise ValueError(cond)
 
-                gen = generate(model, z_q, mem_mask, lang_t, bos, eos, pad,
-                               max_gen_len, device)
+                if getattr(model, "decoder_type", "ar") == "nat":
+                    src_len = (src_t != pad).sum(dim=1)
+                    gen = generate_nat(model, z_q, mem_mask, lang_t, src_len,
+                                       bos, pad, max_gen_len)
+                else:
+                    gen = generate(model, z_q, mem_mask, lang_t, bos, eos, pad,
+                                   max_gen_len, device)
                 e_gen = F.normalize(embed(st_model, gen, pad).float(), dim=-1)
                 e_src = F.normalize(embed(st_model, src_t, pad).float(), dim=-1)
                 cos = (e_gen * e_src).sum(-1)                 # (B,)
@@ -205,6 +224,7 @@ def main():
         use_length_head=cfg.get("use_length_head", False),
         no_vq=cfg.get("no_vq", False),
         no_code=cfg.get("no_code", False),
+        decoder_type=cfg.get("decoder_type", "ar"),
     )
     model.load_state_dict(ckpt["model_state"], strict=True)
     model = model.to(args.device).eval()

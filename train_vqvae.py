@@ -256,6 +256,9 @@ def main():
                              "the decoder (reconstruction upper bound / VQ's cost)")
     parser.add_argument("--no-code", action="store_true",
                         help="Phase 6 B0: zero the bottleneck (LM lower bound)")
+    parser.add_argument("--decoder-type", choices=["ar", "nat"], default="ar",
+                        help="Phase 6 B3: 'nat' = non-autoregressive decoder (codes are "
+                             "the only info source; removes AR exposure bias)")
 
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -327,6 +330,7 @@ def main():
         use_length_head=args.use_length_head,
         no_vq=args.no_vq,
         no_code=args.no_code,
+        decoder_type=args.decoder_type,
     )
     n_train = sum(p.numel() for p in model.parameters() if p.requires_grad)
     n_total = sum(p.numel() for p in model.parameters())
