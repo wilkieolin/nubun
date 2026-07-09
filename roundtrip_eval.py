@@ -53,17 +53,23 @@ def embed(st_model, ids, pad):
 def bottleneck(model, src_t, pad, ratio, slack):
     """Encode+quantize+length-cap, mirroring VQVAE.forward. Returns z_q, mem_mask."""
     z_e = model.encoder(src_t)
-    z_q, indices, _, _ = model.quantizer(z_e)
-    if ratio > 0:
-        tl = compute_target_len(src_t, pad, ratio, slack, model.encoder.m_max)
-        indices = model.quantizer.force_stop_at(indices, tl)
-        z_q_forced = model.quantizer.codebook[indices]
-        mb = (indices != model.quantizer.stop_index).unsqueeze(-1)
-        z_q = torch.where(mb, z_q, z_q_forced)
-    if model.use_stop_mask:
-        mem_mask = model.quantizer.get_stop_mask(indices)
+    if getattr(model, "no_vq", False):
+        z_q = z_e
+        mem_mask = torch.ones(z_e.shape[:2], dtype=torch.bool, device=z_e.device)
     else:
-        mem_mask = torch.ones_like(indices, dtype=torch.bool)
+        z_q, indices, _, _ = model.quantizer(z_e)
+        if ratio > 0:
+            tl = compute_target_len(src_t, pad, ratio, slack, model.encoder.m_max)
+            indices = model.quantizer.force_stop_at(indices, tl)
+            z_q_forced = model.quantizer.codebook[indices]
+            mb = (indices != model.quantizer.stop_index).unsqueeze(-1)
+            z_q = torch.where(mb, z_q, z_q_forced)
+        if model.use_stop_mask:
+            mem_mask = model.quantizer.get_stop_mask(indices)
+        else:
+            mem_mask = torch.ones_like(indices, dtype=torch.bool)
+    if getattr(model, "no_code", False):
+        z_q = torch.zeros_like(z_q)
     return z_q, mem_mask
 
 
@@ -197,6 +203,8 @@ def main():
         use_ema=cfg.get("use_ema", False), ema_decay=cfg.get("ema_decay", 0.99),
         use_semantic_head=cfg.get("use_semantic_head", False),
         use_length_head=cfg.get("use_length_head", False),
+        no_vq=cfg.get("no_vq", False),
+        no_code=cfg.get("no_code", False),
     )
     model.load_state_dict(ckpt["model_state"], strict=True)
     model = model.to(args.device).eval()

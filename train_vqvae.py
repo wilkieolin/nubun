@@ -251,6 +251,11 @@ def main():
                         help="Predict bottleneck length from pooled codes (stop fix / NAT prereq)")
     parser.add_argument("--lambda-lenpred", type=float, default=0.1,
                         help="Weight on the length-prediction MSE loss")
+    parser.add_argument("--no-vq", action="store_true",
+                        help="Phase 6 B1: skip quantization, pass continuous z_e to "
+                             "the decoder (reconstruction upper bound / VQ's cost)")
+    parser.add_argument("--no-code", action="store_true",
+                        help="Phase 6 B0: zero the bottleneck (LM lower bound)")
 
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -320,6 +325,8 @@ def main():
         dead_threshold=args.dead_threshold,
         use_semantic_head=args.use_semantic_head,
         use_length_head=args.use_length_head,
+        no_vq=args.no_vq,
+        no_code=args.no_code,
     )
     n_train = sum(p.numel() for p in model.parameters() if p.requires_grad)
     n_total = sum(p.numel() for p in model.parameters())
@@ -368,7 +375,7 @@ def main():
         # find_unused_parameters=False: every fwd uses every param (both encoder
         # and decoder are touched). gradient_as_bucket_view: small memory win.
         model = DDP(model, device_ids=[device.index] if device.type == "cuda" else None,
-                    find_unused_parameters=False,
+                    find_unused_parameters=(args.no_vq or args.no_code),
                     gradient_as_bucket_view=True)
         # Helper to peek at the unwrapped module (for ema_update, codebook lookup)
         unwrapped = model.module

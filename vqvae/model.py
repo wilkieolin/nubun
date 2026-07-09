@@ -32,11 +32,15 @@ class VQVAE(nn.Module):
         use_semantic_head: bool = False,  # Phase 5: semantic-target loss
         d_semantic: int = 384,            # dim of frozen sentence-embedding target
         use_length_head: bool = False,    # Phase 5c: predict length (stop fix / NAT prereq)
+        no_vq: bool = False,              # Phase 6 B1: skip quantization (continuous z_e -> decoder)
+        no_code: bool = False,            # Phase 6 B0: zero the bottleneck (LM lower bound)
     ):
         super().__init__()
         self.use_stop_mask = use_stop_mask
         self.use_semantic_head = use_semantic_head
         self.use_length_head = use_length_head
+        self.no_vq = no_vq
+        self.no_code = no_code
         self.pad_token_id = pad_token_id
         self.encoder = Encoder(
             vocab_size=vocab_size, d_model=d_model, d_code=d_code,
@@ -86,20 +90,36 @@ class VQVAE(nn.Module):
         >= target_len[i] are forced to <stop> after quantization. Used
         with the M2 hard length cap."""
         z_e = self.encoder(src_ids)
-        z_q, indices, vq_losses, usage = self.quantizer(z_e)
-        if target_len is not None:
-            indices = self.quantizer.force_stop_at(indices, target_len)
-            # When we force stop, the quantized vectors at the forced positions
-            # should be the stop codebook entry, not the encoder's free choice.
-            # Look them up:
-            z_q_forced = self.quantizer.codebook[indices]
-            # Preserve the straight-through path on positions before the cap
-            mask_before = (indices != self.quantizer.stop_index).unsqueeze(-1)
-            z_q = torch.where(mask_before, z_q, z_q_forced)
-        if self.use_stop_mask:
-            mem_mask = self.quantizer.get_stop_mask(indices)
-        else:
+        if self.no_vq:
+            # Phase 6 B1 upper bound: continuous bottleneck, no quantization, no
+            # length cap / stop mask (uses all m_max slots). Isolates the cost of
+            # quantization vs the decoder's ability to translate at all.
+            z_q = z_e
+            indices = torch.zeros(z_e.shape[:2], dtype=torch.long, device=z_e.device)
+            zero = z_e.new_zeros(())
+            vq_losses = {"commit": zero, "codebook": zero}
+            usage = torch.zeros(self.quantizer.k, device=z_e.device)
             mem_mask = torch.ones_like(indices, dtype=torch.bool)
+        else:
+            z_q, indices, vq_losses, usage = self.quantizer(z_e)
+            if target_len is not None:
+                indices = self.quantizer.force_stop_at(indices, target_len)
+                # When we force stop, the quantized vectors at the forced positions
+                # should be the stop codebook entry, not the encoder's free choice.
+                # Look them up:
+                z_q_forced = self.quantizer.codebook[indices]
+                # Preserve the straight-through path on positions before the cap
+                mask_before = (indices != self.quantizer.stop_index).unsqueeze(-1)
+                z_q = torch.where(mask_before, z_q, z_q_forced)
+            if self.use_stop_mask:
+                mem_mask = self.quantizer.get_stop_mask(indices)
+            else:
+                mem_mask = torch.ones_like(indices, dtype=torch.bool)
+
+        # Phase 6 B0 lower bound: zero the bottleneck content (decoder sees only
+        # the lang tag + zeroed memory) -> what the AR decoder does with 0 bits.
+        if self.no_code:
+            z_q = torch.zeros_like(z_q)
 
         # Phase 5/5c: masked-mean-pool the quantized bottleneck for the auxiliary
         # heads. Gradients flow through z_q (straight-through) into encoder + codebook.
