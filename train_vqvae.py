@@ -259,6 +259,9 @@ def main():
     parser.add_argument("--decoder-type", choices=["ar", "nat"], default="ar",
                         help="Phase 6 B3: 'nat' = non-autoregressive decoder (codes are "
                              "the only info source; removes AR exposure bias)")
+    parser.add_argument("--unfreeze-embeddings", action="store_true",
+                        help="Phase 6: train the token embeddings (input+tied output) "
+                             "instead of keeping the frozen XLM-R table")
 
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -332,6 +335,13 @@ def main():
         no_code=args.no_code,
         decoder_type=args.decoder_type,
     )
+    if args.unfreeze_embeddings:
+        # Phase 6: the frozen XLM-R *input* embeddings double as the tied output
+        # projection, which caps generation quality. Unfreeze both enc+dec token
+        # embeddings (must happen before the optimizer is built so they're included).
+        model.encoder.token_emb.weight.requires_grad = True
+        model.decoder.token_emb.weight.requires_grad = True
+        log("  embeddings UNFROZEN (encoder + decoder token_emb trainable)")
     n_train = sum(p.numel() for p in model.parameters() if p.requires_grad)
     n_total = sum(p.numel() for p in model.parameters())
     print(f"  trainable params: {n_train/1e6:.2f}M (total {n_total/1e6:.2f}M)")
