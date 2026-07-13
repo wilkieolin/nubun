@@ -10,6 +10,7 @@ DDP launch (P4 M6):
 """
 
 import argparse
+import math
 import os
 import time
 
@@ -166,6 +167,11 @@ def main():
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--warmup-steps", type=int, default=500)
+    parser.add_argument("--lr-decay", choices=["none", "cosine"], default="none",
+                        help="Phase 6: 'cosine' decays LR from peak to lr-min-ratio "
+                             "after warmup (fixes long-run divergence from constant LR)")
+    parser.add_argument("--lr-min-ratio", type=float, default=0.1,
+                        help="Cosine decay floor as a fraction of peak LR")
     parser.add_argument("--log-every", type=int, default=100)
     parser.add_argument("--eval-every", type=int, default=500)
     parser.add_argument("--ckpt-every", type=int, default=1000)
@@ -448,8 +454,23 @@ def main():
     optim = torch.optim.AdamW(
         [p for p in model.parameters() if p.requires_grad],
         lr=args.lr, weight_decay=0.01)
-    sched = torch.optim.lr_scheduler.LambdaLR(
-        optim, lambda step: min(1.0, (step + 1) / args.warmup_steps))
+
+    def lr_lambda(step):
+        # Linear warmup to 1.0
+        if step < args.warmup_steps:
+            return (step + 1) / args.warmup_steps
+        if args.lr_decay == "cosine":
+            # Cosine decay from 1.0 -> lr_min_ratio over the remaining steps.
+            # Phase 6: the warmup-only constant-LR schedule diverged over long
+            # (100k) horizons (VQ + unfrozen both crashed in the 2nd half); decay
+            # to a floor keeps late training stable.
+            progress = (step - args.warmup_steps) / max(1, args.steps - args.warmup_steps)
+            progress = min(1.0, progress)
+            return args.lr_min_ratio + 0.5 * (1 - args.lr_min_ratio) * \
+                (1 + math.cos(math.pi * progress))
+        return 1.0  # constant (legacy default)
+
+    sched = torch.optim.lr_scheduler.LambdaLR(optim, lr_lambda)
 
     autocast_dtype = torch.bfloat16 if args.bf16 else None
 
