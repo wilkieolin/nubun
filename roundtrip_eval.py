@@ -225,6 +225,8 @@ def main():
         no_vq=cfg.get("no_vq", False),
         no_code=cfg.get("no_code", False),
         decoder_type=cfg.get("decoder_type", "ar"),
+        use_rvq=cfg.get("use_rvq", False),
+        n_rvq_levels=cfg.get("n_rvq_levels", 4),
     )
     model.load_state_dict(ckpt["model_state"], strict=True)
     model = model.to(args.device).eval()

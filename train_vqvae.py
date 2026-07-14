@@ -268,6 +268,11 @@ def main():
     parser.add_argument("--unfreeze-embeddings", action="store_true",
                         help="Phase 6: train the token embeddings (input+tied output) "
                              "instead of keeping the frozen XLM-R table")
+    parser.add_argument("--use-rvq", action="store_true",
+                        help="Phase 7: residual VQ — n-rvq-levels codes summed per slot "
+                             "(combinatorial capacity). Run without --use-ema/--use-stop-mask.")
+    parser.add_argument("--n-rvq-levels", type=int, default=4,
+                        help="Number of residual codebooks (codes per slot) for RVQ")
 
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -340,6 +345,8 @@ def main():
         no_vq=args.no_vq,
         no_code=args.no_code,
         decoder_type=args.decoder_type,
+        use_rvq=args.use_rvq,
+        n_rvq_levels=args.n_rvq_levels,
     )
     if args.unfreeze_embeddings:
         # Phase 6: the frozen XLM-R *input* embeddings double as the tied output

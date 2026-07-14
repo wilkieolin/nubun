@@ -7,7 +7,7 @@ from torch.nn import functional as F
 from .decoder import Decoder
 from .encoder import Encoder
 from .nat_decoder import NATDecoder
-from .quantizer import VectorQuantizer
+from .quantizer import ResidualVectorQuantizer, VectorQuantizer
 
 
 class VQVAE(nn.Module):
@@ -37,6 +37,8 @@ class VQVAE(nn.Module):
         no_vq: bool = False,              # Phase 6 B1: skip quantization (continuous z_e -> decoder)
         no_code: bool = False,            # Phase 6 B0: zero the bottleneck (LM lower bound)
         decoder_type: str = "ar",         # Phase 6 B3: "ar" | "nat" (non-autoregressive)
+        use_rvq: bool = False,            # Phase 7: residual VQ (n_rvq_levels codes/slot)
+        n_rvq_levels: int = 4,
     ):
         super().__init__()
         self.use_stop_mask = use_stop_mask
@@ -45,6 +47,7 @@ class VQVAE(nn.Module):
         self.no_vq = no_vq
         self.no_code = no_code
         self.decoder_type = decoder_type
+        self.use_rvq = use_rvq
         self.pad_token_id = pad_token_id
         self.encoder = Encoder(
             vocab_size=vocab_size, d_model=d_model, d_code=d_code,
@@ -52,10 +55,14 @@ class VQVAE(nn.Module):
             m_max=m_max, dropout=dropout, pad_token_id=pad_token_id,
             embedding_table=embedding_table,
         )
-        self.quantizer = VectorQuantizer(
-            k=k, d_code=d_code, beta_commit=beta_commit,
-            use_ema=use_ema, ema_decay=ema_decay,
-            dead_threshold=dead_threshold)
+        if use_rvq:
+            self.quantizer = ResidualVectorQuantizer(
+                k=k, d_code=d_code, n_levels=n_rvq_levels, beta_commit=beta_commit)
+        else:
+            self.quantizer = VectorQuantizer(
+                k=k, d_code=d_code, beta_commit=beta_commit,
+                use_ema=use_ema, ema_decay=ema_decay,
+                dead_threshold=dead_threshold)
         if decoder_type == "nat":
             self.decoder = NATDecoder(
                 vocab_size=vocab_size, n_langs=n_langs, d_model=d_model,

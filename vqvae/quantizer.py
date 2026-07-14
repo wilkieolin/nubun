@@ -202,3 +202,80 @@ class VectorQuantizer(nn.Module):
         first = is_stop.float().argmax(dim=1)
         return torch.where(any_stop, first,
                            torch.full_like(first, M, dtype=torch.long))
+
+
+class ResidualVectorQuantizer(nn.Module):
+    """Phase 7: residual VQ — each slot is quantized by n_levels codebooks in
+    sequence, each fitting the residual of the previous. The bottleneck vector is
+    the SUM of the per-level selections, giving additive/combinatorial capacity
+    (n_levels codes per slot instead of one) — and a natural "stack of radicals"
+    per character for the composable-logography goal.
+
+    Gradient mode only (no EMA), so the training loop's ema_update/reset_dead
+    calls (guarded by args.use_ema) are simply not used. Returns level-0 indices
+    as the (B, M) `indices` for logging/stop-mask compatibility; z_q is the full
+    multi-level sum. Run without stop-mask / length-cap (fixed m_max slots).
+    """
+
+    def __init__(self, k: int = 128, d_code: int = 256, n_levels: int = 4,
+                 beta_commit: float = 0.25):
+        super().__init__()
+        self.k = k
+        self.d_code = d_code
+        self.n_levels = n_levels
+        self.beta_commit = beta_commit
+        self.use_ema = False
+        self.stop_index = 0  # convention (unused when run without stop-mask)
+        scale = 1.0 / (d_code ** 0.5)
+        self.codebooks = nn.ParameterList(
+            [nn.Parameter(torch.randn(k, d_code) * scale) for _ in range(n_levels)])
+
+    def forward(self, z_e: torch.Tensor) -> tuple:
+        B, M, D = z_e.shape
+        assert D == self.d_code, f"z_e last dim {D} != d_code {self.d_code}"
+        flat = z_e.reshape(-1, D)
+
+        residual = flat
+        quantized = torch.zeros_like(flat)
+        commit = flat.new_zeros(())
+        codebook = flat.new_zeros(())
+        idx0 = None
+        for level, cb in enumerate(self.codebooks):
+            r_sq = (residual ** 2).sum(dim=1, keepdim=True)
+            e_sq = (cb ** 2).sum(dim=1).unsqueeze(0)
+            dist = r_sq + e_sq - 2 * residual @ cb.t()
+            idx = dist.argmin(dim=1)
+            zq = cb[idx]
+            # commit binds the residual to its code; codebook pulls the code to it
+            commit = commit + (residual - zq.detach()).pow(2).mean()
+            codebook = codebook + (zq - residual.detach()).pow(2).mean()
+            quantized = quantized + zq
+            residual = residual - zq.detach()   # detach: encoder grad flows only via final STE
+            if level == 0:
+                idx0 = idx
+
+        # Straight-through on the full multi-level sum
+        z_q_flat = flat + (quantized - flat).detach()
+        losses = {"commit": self.beta_commit * commit, "codebook": codebook}
+        usage = torch.bincount(idx0, minlength=self.k).float()
+        return z_q_flat.view(B, M, D), idx0.view(B, M), losses, usage
+
+    # --- compatibility shims (operate on level-0 indices; unused w/o stop-mask) ---
+    def get_stop_mask(self, indices: torch.Tensor) -> torch.Tensor:
+        is_stop = indices == self.stop_index
+        return ~(torch.cumsum(is_stop.long(), dim=1) > 0)
+
+    def force_stop_at(self, indices, target_len):
+        B, M = indices.shape
+        target = target_len.clamp(min=1, max=M).to(indices.device)
+        positions = torch.arange(M, device=indices.device).unsqueeze(0)
+        mask = positions >= target.unsqueeze(1)
+        return torch.where(mask, torch.full_like(indices, self.stop_index), indices)
+
+    def first_stop_position(self, indices: torch.Tensor) -> torch.Tensor:
+        B, M = indices.shape
+        is_stop = indices == self.stop_index
+        any_stop = is_stop.any(dim=1)
+        first = is_stop.float().argmax(dim=1)
+        return torch.where(any_stop, first,
+                           torch.full_like(first, M, dtype=torch.long))
