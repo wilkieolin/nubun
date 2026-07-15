@@ -109,6 +109,54 @@ def build_test_control_pairs(codes: list[int], K: int, M_max: int,
     return test_idx, ctrl_idx, code_per_row
 
 
+def rvq_lookup(quantizer, idx_multi: torch.Tensor) -> torch.Tensor:
+    """Sum the per-level codebook selections for a multi-level index tensor.
+    idx_multi: (..., n_levels) int64. Returns (..., d_code)."""
+    z = None
+    for level, cb in enumerate(quantizer.codebooks):
+        sel = cb[idx_multi[..., level]]
+        z = sel if z is None else z + sel
+    return z
+
+
+def build_rvq_test_control(codes, K, M_max, n_levels, target_level,
+                           n_samples, seq_len_range, seed=0, device="cuda"):
+    """RVQ analogue of build_test_control_pairs. Each slot has n_levels codes;
+    the SUM is its vector. We vary the target code at `target_level` of one slot
+    (test) vs a different code (control), holding all other (slot, level) entries
+    fixed. Index 0 is a real code in RVQ (no reserved <stop>); validity is a
+    separate length mask, returned as `lengths`.
+
+    Returns test_idx, ctrl_idx : (N, M, n_levels); code_per_row (N,); lengths (N,).
+    """
+    L_min, L_max = seq_len_range
+    C = len(codes)
+    N = C * n_samples
+    g = torch.Generator(device=device); g.manual_seed(seed)
+
+    lengths = torch.randint(L_min, L_max + 1, (N,), device=device, generator=g)
+    positions = (lengths.float() * torch.rand((N,), device=device, generator=g)).long()
+    positions = positions.clamp(min=0, max=M_max - 1)
+
+    test_idx = torch.randint(0, K, (N, M_max, n_levels), device=device, generator=g)
+    ctrl_idx = test_idx.clone()
+
+    arange_n = torch.arange(N, device=device)
+    code_per_row = torch.tensor([c for c in codes for _ in range(n_samples)],
+                                device=device, dtype=torch.long)
+    test_idx[arange_n, positions, target_level] = code_per_row
+
+    ctrl_codes = torch.randint(0, K, (N,), device=device, generator=g)
+    same = ctrl_codes == code_per_row
+    while same.any():
+        ctrl_codes[same] = torch.randint(0, K, (int(same.sum().item()),),
+                                          device=device, generator=g)
+        same = ctrl_codes == code_per_row
+    ctrl_idx[arange_n, positions, target_level] = ctrl_codes
+
+    return test_idx, ctrl_idx, code_per_row, lengths
+
+
 @torch.no_grad()
 def batched_greedy_decode(model, z_q: torch.Tensor, mem_mask: torch.Tensor,
                           lang_ids: torch.Tensor, bos_id: int, eos_id: int,
@@ -168,6 +216,9 @@ def main():
     parser.add_argument("--top-tokens", type=int, default=8)
     parser.add_argument("--active-only", action="store_true",
                         help="Restrict to codes that appear in val encoder outputs")
+    parser.add_argument("--rvq-level", type=int, default=0,
+                        help="For RVQ models: which residual level's codes to analyze "
+                             "(0 = coarsest/primary radical)")
     parser.add_argument("--max-codes", type=int, default=None,
                         help="Hard cap on number of codes (for debugging)")
     parser.add_argument("--decode-chunk", type=int, default=1024,
@@ -200,6 +251,10 @@ def main():
         use_ema=cfg.get("use_ema", False), ema_decay=cfg.get("ema_decay", 0.99),
         use_semantic_head=cfg.get("use_semantic_head", False),
         use_length_head=cfg.get("use_length_head", False),
+        no_vq=cfg.get("no_vq", False), no_code=cfg.get("no_code", False),
+        decoder_type=cfg.get("decoder_type", "ar"),
+        use_rvq=cfg.get("use_rvq", False),
+        n_rvq_levels=cfg.get("n_rvq_levels", 4),
     )
     model.load_state_dict(ckpt["model_state"], strict=True)
     model = model.to(args.device).eval()
@@ -209,34 +264,47 @@ def main():
 
     K = model.quantizer.k
     M = model.encoder.m_max
+    is_rvq = getattr(model, "use_rvq", False)
+    label = f"L{args.rvq_level} Char" if is_rvq else "Char"
 
-    # Pick which codes to analyze
-    if args.active_only:
+    # Pick which codes to analyze. In RVQ index 0 is a real code (no reserved
+    # <stop>); in single-VQ index 0 is <stop> and skipped.
+    if args.active_only and not is_rvq:
         print("Identifying active codes from val encoder pass...")
         codes = gather_active_codes(model, devtest_ids, devtest_lens, meta, args.device)
         print(f"  active codes: {len(codes)}/{K}")
     else:
-        codes = list(range(1, K))  # skip <stop>
+        codes = list(range(0, K)) if is_rvq else list(range(1, K))
     if args.max_codes is not None:
         codes = codes[: args.max_codes]
     n_codes = len(codes)
-    print(f"\nAnalyzing {n_codes} codes with n_samples={args.n_samples}, "
-          f"chunk={args.decode_chunk}")
+    print(f"\nAnalyzing {n_codes} codes ({'RVQ level ' + str(args.rvq_level) if is_rvq else 'single-VQ'}) "
+          f"with n_samples={args.n_samples}, chunk={args.decode_chunk}")
 
     # Build all test/control latent index sequences in one pass
     print("Building test/control latent sequences...")
-    test_idx, ctrl_idx, code_per_row = build_test_control_pairs(
-        codes, K, M, args.n_samples, (args.seq_len_min, args.seq_len_max),
-        stop_index=model.quantizer.stop_index, device=args.device)
-    # Each is (n_codes * n_samples, M)
-    n_seqs_per_role = test_idx.size(0)
-
-    # Compute z_q + mask for each (one forward through codebook lookup, no grad)
-    cb = model.quantizer.codebook
-    z_q_test = cb[test_idx]                   # (N, M, D)
-    z_q_ctrl = cb[ctrl_idx]
-    mask_test = model.quantizer.get_stop_mask(test_idx)
-    mask_ctrl = model.quantizer.get_stop_mask(ctrl_idx)
+    if is_rvq:
+        n_levels = model.quantizer.n_levels
+        assert 0 <= args.rvq_level < n_levels, f"rvq-level must be in [0,{n_levels})"
+        test_idx, ctrl_idx, code_per_row, lengths = build_rvq_test_control(
+            codes, K, M, n_levels, args.rvq_level, args.n_samples,
+            (args.seq_len_min, args.seq_len_max), device=args.device)
+        n_seqs_per_role = test_idx.size(0)
+        z_q_test = rvq_lookup(model.quantizer, test_idx)   # (N, M, D)
+        z_q_ctrl = rvq_lookup(model.quantizer, ctrl_idx)
+        pos_arange = torch.arange(M, device=args.device).unsqueeze(0)
+        mask_test = pos_arange < lengths.unsqueeze(1)        # (N, M) validity mask
+        mask_ctrl = mask_test.clone()
+    else:
+        test_idx, ctrl_idx, code_per_row = build_test_control_pairs(
+            codes, K, M, args.n_samples, (args.seq_len_min, args.seq_len_max),
+            stop_index=model.quantizer.stop_index, device=args.device)
+        n_seqs_per_role = test_idx.size(0)
+        cb = model.quantizer.codebook
+        z_q_test = cb[test_idx]                   # (N, M, D)
+        z_q_ctrl = cb[ctrl_idx]
+        mask_test = model.quantizer.get_stop_mask(test_idx)
+        mask_ctrl = model.quantizer.get_stop_mask(ctrl_idx)
 
     n_lang = len(meta.short_codes)
 
@@ -287,11 +355,12 @@ def main():
         f.write("VQ-VAE Codebook Semantics (output-side discovery, batched)\n")
         f.write(f"Checkpoint: {args.checkpoint}\n")
         f.write(f"K={K}, codes_analyzed={n_codes}, samples={args.n_samples}, "
-                f"decode_max_len={args.decode_max_len}\n")
+                f"decode_max_len={args.decode_max_len}"
+                f"{', RVQ level ' + str(args.rvq_level) if is_rvq else ''}\n")
         f.write("=" * 72 + "\n\n")
 
         for code in codes:
-            f.write(f"Char {code:3d}\n")
+            f.write(f"{label} {code:3d}\n")
             cross = Counter()
             for lang in range(n_lang):
                 test_c = role_token_counts["test"][(code, lang)]
