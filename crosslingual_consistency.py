@@ -92,6 +92,10 @@ def main():
         use_ema=cfg.get("use_ema", False), ema_decay=cfg.get("ema_decay", 0.99),
         use_semantic_head=cfg.get("use_semantic_head", False),
         use_length_head=cfg.get("use_length_head", False),
+        no_vq=cfg.get("no_vq", False), no_code=cfg.get("no_code", False),
+        decoder_type=cfg.get("decoder_type", "ar"),
+        use_rvq=cfg.get("use_rvq", False),
+        n_rvq_levels=cfg.get("n_rvq_levels", 4),
     )
     model.load_state_dict(ckpt["model_state"], strict=True)
     model = model.to(args.device).eval()
