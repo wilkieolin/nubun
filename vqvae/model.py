@@ -39,6 +39,7 @@ class VQVAE(nn.Module):
         decoder_type: str = "ar",         # Phase 6 B3: "ar" | "nat" (non-autoregressive)
         use_rvq: bool = False,            # Phase 7: residual VQ (n_rvq_levels codes/slot)
         n_rvq_levels: int = 4,
+        tie_embeddings: bool = False,     # Phase 8 E1: share enc/dec token_emb (one XLM-R table)
     ):
         super().__init__()
         self.use_stop_mask = use_stop_mask
@@ -77,6 +78,14 @@ class VQVAE(nn.Module):
                 d_ff=d_ff, dropout=dropout, pad_token_id=pad_token_id,
                 embedding_table=embedding_table,
             )
+        # Phase 8 E1: tie encoder and decoder input embeddings to a single table.
+        # The two separate XLM-R copies (~96M each) dominated trainable params;
+        # sharing one weight halves that, regularizes, and — since the decoder's
+        # output projection is already tied to decoder.token_emb — keeps a single
+        # coherent vocabulary space across read (encode) and write (decode).
+        if tie_embeddings:
+            self.encoder.token_emb.weight = self.decoder.token_emb.weight
+
         # Phase 5: project the (masked-mean-pooled) quantized bottleneck to the
         # frozen sentence-embedding space, so a cosine loss can pressure the
         # codes toward meaning rather than high-frequency token boilerplate.

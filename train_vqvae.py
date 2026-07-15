@@ -273,6 +273,10 @@ def main():
                              "(combinatorial capacity). Run without --use-ema/--use-stop-mask.")
     parser.add_argument("--n-rvq-levels", type=int, default=4,
                         help="Number of residual codebooks (codes per slot) for RVQ")
+    parser.add_argument("--tie-embeddings", action="store_true",
+                        help="Phase 8 E1: share the encoder and decoder token_emb (one "
+                             "XLM-R table). Halves embedding params vs two separate copies; "
+                             "frees budget for a deeper/wider decoder and regularizes.")
 
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -347,6 +351,7 @@ def main():
         decoder_type=args.decoder_type,
         use_rvq=args.use_rvq,
         n_rvq_levels=args.n_rvq_levels,
+        tie_embeddings=args.tie_embeddings,
     )
     if args.unfreeze_embeddings:
         # Phase 6: the frozen XLM-R *input* embeddings double as the tied output
