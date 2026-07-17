@@ -19,7 +19,7 @@ Frozen recipe to reproduce (E3@100k winner): RVQ 8x128, tied emb, deep decoder
 (d_ff 2048, n_dec 10), lr 3e-4 cosine, warmup 500, lambda_sem 5, weighted CE.
 """
 import argparse
-import math
+import os
 import sys
 
 import torch
@@ -29,6 +29,10 @@ sys.path.insert(0, ".")
 from vqvae.model import VQVAE  # noqa: E402
 
 import cerebras.pytorch as cstorch  # noqa: E402
+
+# Repo root (this file is cerebras/train_cstorch.py) — appliance workers must be
+# able to import `vqvae` from here and mount it, so it seeds the cluster config.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def build_model(args, emb):
@@ -99,6 +103,23 @@ def main():
     ap.add_argument("--ckpt-every", type=int, default=20000)
     ap.add_argument("--compile-only", action="store_true")
     ap.add_argument("--validate-only", action="store_true")
+    # --- CS-3 appliance / ALCF cluster config (see PORT_CS3.md §11) ------------
+    # On an ALCF user node mgmt_address + credentials come from
+    # /opt/cerebras/config_v2 automatically; we only supply run shape + the dirs
+    # the appliance workers must see. Off an ALCF node these are harmless — the
+    # backend still stops at ClusterConfigError (no mgmt_address), as documented.
+    ap.add_argument("--num-csx", type=int, default=1,
+                    help="Number of CS-3 systems to request (ALCF has 4).")
+    ap.add_argument("--job-time-sec", type=int, default=82800,
+                    help="Wall-clock cap in seconds (ALCF hard limit is 24h).")
+    ap.add_argument("--job-label", default="name=nubun",
+                    help="label=value tag for `csctl get jobs` filtering.")
+    ap.add_argument("--mount-dirs", default=None,
+                    help="Comma-separated dirs the workers mount (repo + data). "
+                         "Defaults to the repo root; add your ALCF data dir.")
+    ap.add_argument("--python-paths", default=None,
+                    help="Comma-separated PYTHONPATH dirs for the workers "
+                         "(must include the repo root so `import vqvae` works).")
     # architecture (frozen E3 recipe defaults)
     ap.add_argument("--d-model", type=int, default=384)
     ap.add_argument("--d-code", type=int, default=256)
@@ -120,26 +141,46 @@ def main():
     if not args.no_token_weights:
         token_weight = torch.load(args.token_weights, map_location="cpu")
 
+    # Cluster config: what to run and which dirs the appliance workers see. The
+    # cluster address/credentials are resolved from the ALCF user node's
+    # /opt/cerebras/config_v2, so we deliberately do NOT set mgmt_address here.
+    mount_dirs = ([d for d in args.mount_dirs.split(",") if d]
+                  if args.mount_dirs else [REPO_ROOT])
+    python_paths = ([d for d in args.python_paths.split(",") if d]
+                    if args.python_paths else [REPO_ROOT])
+    cluster_config = cstorch.distributed.ClusterConfig(  # VERIFY: 2.10.0 fields
+        num_csx=args.num_csx,
+        job_labels=[args.job_label],
+        job_time_sec=args.job_time_sec,
+        mount_dirs=mount_dirs,
+        python_paths=python_paths,
+    )
     # VERIFY: backend construction / kwargs may differ by release.
     backend = cstorch.backend(
-        "CSX", compile_only=args.compile_only, validate_only=args.validate_only)
+        "CSX", compile_only=args.compile_only, validate_only=args.validate_only,
+        cluster_config=cluster_config)
 
     model = build_model(args, emb)
     model.train()
     compiled_model = cstorch.compile(model, backend)              # VERIFY
     optimizer = cstorch.optim.AdamW(model.parameters(), lr=args.lr)  # VERIFY
 
-    # Cosine LR with linear warmup. IMPORTANT: decay over the ACTUAL step count
-    # you intend to run — do NOT stretch cosine past the run length (that hot-LR
+    # Linear warmup -> cosine decay, built from native cstorch schedulers.
+    # cstorch's LambdaLR is NOT torch's (it takes initial_learning_rate and wants
+    # set_value_lambda overridden), so we compose the two-phase schedule with
+    # SequentialLR instead. IMPORTANT: CosineDecayLR.total_iters is the ACTUAL
+    # remaining step count — do NOT stretch cosine past the run length (that hot-LR
     # tail collapsed the RVQ codebook on the GB10; see PORT_CS3.md / PHASE8.md).
-    def lr_lambda(step):
-        if step < args.warmup_steps:
-            return step / max(1, args.warmup_steps)
-        p = (step - args.warmup_steps) / max(1, args.steps - args.warmup_steps)
-        return args.lr_min_ratio + 0.5 * (1 - args.lr_min_ratio) * (1 + math.cos(math.pi * p))
-    # VERIFY: use cstorch.optim.lr_scheduler.LambdaLR if available, else the
-    # nearest cstorch cosine scheduler. Plain torch schedulers may not lower.
-    lr_scheduler = cstorch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)  # VERIFY
+    sched = cstorch.optim.lr_scheduler
+    warmup = cstorch.optim.lr_scheduler.LinearLR(
+        optimizer, initial_learning_rate=0.0, end_learning_rate=args.lr,
+        total_iters=max(1, args.warmup_steps))
+    cosine = cstorch.optim.lr_scheduler.CosineDecayLR(
+        optimizer, initial_learning_rate=args.lr,
+        end_learning_rate=args.lr * args.lr_min_ratio,
+        total_iters=max(1, args.steps - args.warmup_steps))
+    lr_scheduler = cstorch.optim.lr_scheduler.SequentialLR(
+        optimizer, schedulers=[warmup, cosine], milestones=[args.warmup_steps])
 
     if token_weight is not None:
         token_weight = token_weight.to(cstorch.current_torch_device())  # VERIFY
@@ -174,9 +215,10 @@ def main():
         print(f"  checkpoint saved: step {step}")
 
     dataloader = cstorch.utils.data.DataLoader(make_input_fn(args, vocab))  # VERIFY
-    executor = cstorch.utils.data.DataExecutor(                             # VERIFY
-        dataloader, num_steps=args.steps,
-        checkpoint_steps=args.ckpt_every, backend=backend)
+    # DataExecutor takes NO backend kwarg in cstorch 2.10.0 — backend is bound
+    # globally by cstorch.backend()/cstorch.compile above.
+    executor = cstorch.utils.data.DataExecutor(
+        dataloader, num_steps=args.steps, checkpoint_steps=args.ckpt_every)
 
     print(f"Starting cstorch run: steps={args.steps} semantic={not args.no_semantic} "
           f"compile_only={args.compile_only}")
