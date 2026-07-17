@@ -96,15 +96,25 @@ class Decoder(nn.Module):
         tgt_emb = self.pos(tgt_emb)
         tgt_pad_mask = target_ids == self.pad_token_id
 
-        causal_mask = torch.triu(
-            torch.ones(T, T, device=device, dtype=torch.bool), diagonal=1)
+        # Causal mask (True = disallowed, strictly above the diagonal). Built via
+        # an arange compare rather than torch.triu: cstorch's triu decomposition
+        # does arithmetic on the input and rejects a bool tensor. col > row is the
+        # identical upper-triangular (excl. diagonal) mask in pure static ops.
+        _rows = torch.arange(T, device=device).view(-1, 1)
+        _cols = torch.arange(T, device=device).view(1, -1)
+        causal_mask = _cols > _rows
 
+        # tgt_is_causal=True tells nn.TransformerDecoder our tgt_mask is causal,
+        # so it skips _detect_is_causal_mask — whose internal torch.triu(bool)
+        # does not lower on cstorch. The mask is genuinely causal, so this is a
+        # correct hint and leaves GB10 behavior unchanged.
         h = self.decoder(
             tgt=tgt_emb,
             memory=mem,
             tgt_mask=causal_mask,
             tgt_key_padding_mask=tgt_pad_mask,
             memory_key_padding_mask=mem_pad_mask,
+            tgt_is_causal=True,
         )
         h = self.out_norm(h)
 

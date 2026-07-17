@@ -78,11 +78,14 @@ class VectorQuantizer(nn.Module):
         # Straight-through estimator
         z_q_flat = flat + (z_q_flat - flat).detach()
 
-        # Usage counts per code. one_hot().sum() is equivalent to
-        # bincount(minlength=k) but has a STATIC output shape, so it traces on
-        # static-graph backends (Cerebras cstorch); bincount's output size is
-        # data-dependent and does not lower. Identical values on all backends.
-        usage = F.one_hot(indices, self.k).sum(dim=0).float()
+        # Usage counts per code, as a static-shape (k,) tensor. NOTE: neither
+        # bincount (data-dependent output size) NOR F.one_hot lowers on Cerebras
+        # cstorch — F.one_hot internally calls .item() for bounds-checking
+        # (aten::_local_scalar_dense). An arange broadcast-compare is pure
+        # static-shape ops and traces cleanly. Identical values on all backends.
+        onehot = (indices.reshape(-1, 1)
+                  == torch.arange(self.k, device=indices.device)).to(flat.dtype)
+        usage = onehot.sum(dim=0)
 
         z_q = z_q_flat.view(B, M, D)
         idx = indices.view(B, M)
@@ -262,9 +265,11 @@ class ResidualVectorQuantizer(nn.Module):
         # Straight-through on the full multi-level sum
         z_q_flat = flat + (quantized - flat).detach()
         losses = {"commit": self.beta_commit * commit, "codebook": codebook}
-        # one_hot().sum() == bincount(minlength=k) but with a static output shape
-        # (traces on Cerebras cstorch; bincount's data-dependent size does not).
-        usage = F.one_hot(idx0, self.k).sum(dim=0).float()
+        # Static-shape usage counts. F.one_hot does NOT lower on cstorch (it calls
+        # .item() internally for bounds-checking); an arange broadcast-compare does.
+        onehot = (idx0.reshape(-1, 1)
+                  == torch.arange(self.k, device=idx0.device)).to(flat.dtype)
+        usage = onehot.sum(dim=0)
         return z_q_flat.view(B, M, D), idx0.view(B, M), losses, usage
 
     # --- compatibility shims (operate on level-0 indices; unused w/o stop-mask) ---

@@ -4,3 +4,8 @@ logs/
 __pycache__/
 *.pyc
 .claude/
+# cstorch run artifacts
+cerebras_logs/
+compile_dir/
+model_dir/
+*.graph
