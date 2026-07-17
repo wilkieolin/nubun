@@ -103,20 +103,32 @@ cstorch's `LambdaLR` is not torch's).
 
 ## 7. Step 2 — train
 
-    # Milestone 1: recon + RVQ only (prove the model trains on the WSE)
+    # No-data dry compile (fabricates a random emb table + random batches):
+    python cerebras/train_cstorch.py --synthetic-data --no-semantic \
+        --steps 5 --compile-only
+
+    # Milestone 1: recon + RVQ only, REAL opus data (prove it trains on the WSE)
     python cerebras/train_cstorch.py --no-semantic --steps 2000 --compile-only   # dry compile
     python cerebras/train_cstorch.py --no-semantic --steps 2000                  # real run
 
-    # Milestone 2: full recipe (precompute semantic targets first)
-    python cerebras/precompute_semantic_targets.py \
-        --token-ids data/parallel_corpus.npz --out data/sem_targets_parallel.npy
+    # Milestone 2: full recipe. Precompute BOTH semantic-target sets first:
+    python cerebras/precompute_opus_semantic.py --opus-dir data/opus100          # opus (train)
     python cerebras/train_cstorch.py --steps 100000
 
-`train_cstorch.py` mirrors `train_vqvae.py` in cstorch form. **You must replace
-its synthetic `make_input_fn` with the real opus pipeline** — adapt
-`vqvae/data.py::Opus100Dataset` into a cstorch `DataLoader` input function that
-yields `{src_ids, tgt_ids, tgt_lang_id[, sem_target]}`. That data-pipeline
-adaptation is the largest remaining task and is version-specific.
+The real data pipeline is **done**: `cerebras/opus_input.py::make_opus_input_fn`
+streams the same packed opus shards as `vqvae/data.py::Opus100Dataset` and adapts
+them to the two cstorch requirements — (1) **static shapes**: every batch is
+exactly `(B, seq_len)`; longer sentences are truncated (terminal EOS preserved),
+shorter ones pad. (2) **no frozen MiniLM in the trace**: the semantic target is
+`MiniLM(source)`, precomputed offline per shard as `<lang>_en.sem.npz`
+(`src_sem`/`tgt_sem` aligned to pair order) by
+`cerebras/precompute_opus_semantic.py`, and looked up per sample (src vs tgt side
+per the 50/50 direction swap). `train_cstorch.py` selects it via `build_input_fn`
+(`--synthetic-data` forces the random fallback for a no-data dry compile).
+
+`--parallel-corpus data/parallel_corpus.npz` supplies `short_codes` + pad/bos/eos
+so lang-ids and special tokens match the frozen model; `--langs zh,es,fr` trains a
+subset; `--opus-dir` / `--sem-dir` point at the shards and their `.sem.npz`.
 
 The commands above run locally / on a self-configured client. To submit to the
 **ALCF CS-3**, use the cluster-config flags and wrapper in §11.
@@ -239,7 +251,8 @@ system + 23h.
     csctl cancel job <wsjob-id>
     csctl get cluster                    # per-node state
 
-**Still open before a real run:** (1) stage the data files above on ALCF; (2)
-replace the synthetic `make_input_fn` with the real opus pipeline (§7) — the
-largest remaining task; (3) get a trained `.mdl` back to the GB10 for the
-round-trip eval (§9).
+**Still open before a real run:** (1) stage the data files on ALCF (§4) and, for
+M2, run `precompute_opus_semantic.py` there to make the `<lang>_en.sem.npz`
+targets; (2) launch via the wrapper and confirm M1 reaches real execution (the
+loop, the opus pipeline, and cluster config are all done and trace clean); (3)
+get the trained `.mdl` back to the GB10 for round-trip eval (§9).

@@ -60,14 +60,10 @@ def weighted_ce(logits, targets, pad, token_weight):
     return (ce * w).sum() / w.sum().clamp(min=1.0)
 
 
-def make_input_fn(args, vocab):
-    """Return a callable yielding dict batches. REPLACE the synthetic generator
-    with the real opus pipeline (adapt vqvae/data.py Opus100Dataset into a
-    map/iterable dataset here). Keys/shapes must stay as below.
-
-    Each batch: src_ids (B,T) int64, tgt_ids (B,T) int64, tgt_lang_id (B,) int64,
-    and (M2 only) sem_target (B, d_sem) float from precompute_semantic_targets.py.
-    """
+def make_synthetic_input_fn(args, vocab):
+    """Random batches at the right static shapes — for a no-data dry compile
+    (--synthetic-data). Values are meaningless; only shapes matter to the tracer.
+    The real pipeline is cerebras/opus_input.py::make_opus_input_fn."""
     B, T, d_sem = args.batch_size, args.seq_len, 384
 
     def input_fn():
@@ -76,6 +72,7 @@ def make_input_fn(args, vocab):
                 b = {
                     "src_ids": torch.randint(4, vocab, (B, T)),
                     "tgt_ids": torch.randint(4, vocab, (B, T)),
+                    "src_lang_id": torch.randint(0, args.n_langs, (B,)),
                     "tgt_lang_id": torch.randint(0, args.n_langs, (B,)),
                 }
                 if not args.no_semantic:
@@ -85,10 +82,41 @@ def make_input_fn(args, vocab):
     return input_fn
 
 
+def build_input_fn(args, vocab):
+    """Real opus pipeline by default; synthetic only with --synthetic-data."""
+    if args.synthetic_data:
+        print("input: SYNTHETIC (random shapes only — no real data)")
+        return make_synthetic_input_fn(args, vocab)
+    from cerebras.opus_input import make_opus_input_fn
+    langs = [s for s in args.langs.split(",") if s] if args.langs else None
+    print(f"input: opus100 from {args.opus_dir} "
+          f"(seq_len={args.seq_len}, semantic={not args.no_semantic})")
+    return make_opus_input_fn(
+        opus_dir=args.opus_dir, seq_len=args.seq_len, batch_size=args.batch_size,
+        num_steps=args.steps, parallel_corpus=args.parallel_corpus,
+        seed=args.seed, langs=langs, with_semantic=not args.no_semantic,
+        sem_dir=args.sem_dir)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--embedding-table", default="data/embedding_table.pt")
     ap.add_argument("--token-weights", default="data/token_weights.pt")
+    # --- data pipeline (cerebras/opus_input.py) --------------------------------
+    ap.add_argument("--opus-dir", default="data/opus100",
+                    help="Dir of packed <lang>_en.npz opus shards.")
+    ap.add_argument("--parallel-corpus", default="data/parallel_corpus.npz",
+                    help="Source of short_codes + pad/bos/eos so lang-ids and "
+                         "special tokens match the frozen model.")
+    ap.add_argument("--sem-dir", default=None,
+                    help="Dir of <lang>_en.sem.npz targets (M2). Defaults to "
+                         "--opus-dir. Build with precompute_opus_semantic.py.")
+    ap.add_argument("--langs", default=None,
+                    help="Comma-separated X-lang subset (default: all shards).")
+    ap.add_argument("--synthetic-data", action="store_true",
+                    help="Use random batches instead of real opus — for a "
+                         "no-data dry compile (pair with --compile-only).")
+    ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--out-dir", default="model_dir")
     ap.add_argument("--steps", type=int, default=100000)
     ap.add_argument("--batch-size", type=int, default=32)
@@ -121,6 +149,9 @@ def main():
                     help="Comma-separated PYTHONPATH dirs for the workers "
                          "(must include the repo root so `import vqvae` works).")
     # architecture (frozen E3 recipe defaults)
+    ap.add_argument("--vocab-size", type=int, default=250037,
+                    help="Only used with --synthetic-data (real vocab comes from "
+                         "the embedding table).")
     ap.add_argument("--d-model", type=int, default=384)
     ap.add_argument("--d-code", type=int, default=256)
     ap.add_argument("--k", type=int, default=128)
@@ -135,10 +166,17 @@ def main():
     ap.add_argument("--pad-token-id", type=int, default=1)
     args = ap.parse_args()
 
-    emb = torch.load(args.embedding_table, map_location="cpu")
+    # --synthetic-data is a zero-file dry compile: fabricate a random emb table so
+    # the graph can be built and traced without any data/ files present.
+    if args.synthetic_data and not os.path.exists(args.embedding_table):
+        print(f"synthetic-data: fabricating random emb table ({args.vocab_size}, "
+              f"{args.d_model}) — no embedding_table.pt needed")
+        emb = torch.randn(args.vocab_size, args.d_model)
+    else:
+        emb = torch.load(args.embedding_table, map_location="cpu")
     vocab = emb.shape[0]
     token_weight = None
-    if not args.no_token_weights:
+    if not args.no_token_weights and not args.synthetic_data:
         token_weight = torch.load(args.token_weights, map_location="cpu")
 
     # Cluster config: what to run and which dirs the appliance workers see. The
@@ -214,7 +252,7 @@ def main():
         cstorch.save(state, f"{args.out_dir}/nubun_cs_step{step}.mdl")  # VERIFY
         print(f"  checkpoint saved: step {step}")
 
-    dataloader = cstorch.utils.data.DataLoader(make_input_fn(args, vocab))  # VERIFY
+    dataloader = cstorch.utils.data.DataLoader(build_input_fn(args, vocab))  # VERIFY
     # DataExecutor takes NO backend kwarg in cstorch 2.10.0 — backend is bound
     # globally by cstorch.backend()/cstorch.compile above.
     executor = cstorch.utils.data.DataExecutor(
