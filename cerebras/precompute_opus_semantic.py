@@ -32,6 +32,11 @@ from transformers import AutoModel
 # Reuse the exact pooling used for the parallel-corpus targets.
 from precompute_semantic_targets import SEM_MODEL, embed_token_ids
 
+try:
+    from tqdm import tqdm
+except ImportError:                         # progress bar optional
+    tqdm = None
+
 
 def _rows_to_matrix(tokens, offsets, n_pairs, pad):
     """Slice a packed (concatenated) token array into a padded (n_pairs, Tmax)
@@ -55,10 +60,13 @@ def process_shard(path, model, device, pad, batch_size, overwrite):
                                   np.asarray(d["src_offsets"]), n, pad)
         tgt_mat = _rows_to_matrix(np.asarray(d["tgt_tokens"]),
                                   np.asarray(d["tgt_offsets"]), n, pad)
+    lang = os.path.basename(path).split("_en.npz")[0]
     print(f"{os.path.basename(path)}: {n} pairs, "
           f"src Tmax={src_mat.shape[1]} tgt Tmax={tgt_mat.shape[1]}")
-    src_sem = embed_token_ids(model, src_mat, pad, device, batch_size)
-    tgt_sem = embed_token_ids(model, tgt_mat, pad, device, batch_size)
+    src_sem = embed_token_ids(model, src_mat, pad, device, batch_size,
+                              desc=f"{lang} src")
+    tgt_sem = embed_token_ids(model, tgt_mat, pad, device, batch_size,
+                              desc=f"{lang} tgt")
     np.savez(out_path, src_sem=src_sem, tgt_sem=tgt_sem)
     print(f"  wrote {src_sem.shape} src + {tgt_sem.shape} tgt -> {out_path}")
 
@@ -85,7 +93,8 @@ def main():
 
     print(f"loading {SEM_MODEL} on {args.device}...")
     model = AutoModel.from_pretrained(SEM_MODEL).eval().to(args.device)
-    for path in shards:
+    shard_iter = tqdm(shards, desc="shards", unit="shard") if tqdm is not None else shards
+    for path in shard_iter:
         process_shard(path, model, args.device, args.pad_token_id,
                       args.batch_size, args.overwrite)
     print("done.")

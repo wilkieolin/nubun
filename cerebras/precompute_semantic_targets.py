@@ -25,16 +25,28 @@ import numpy as np
 import torch
 from transformers import AutoModel
 
+try:
+    from tqdm import tqdm
+except ImportError:                         # progress bar optional
+    tqdm = None
+
 SEM_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 
 @torch.no_grad()
-def embed_token_ids(model, ids, pad_token_id, device, batch_size=256, fp16=True):
+def embed_token_ids(model, ids, pad_token_id, device, batch_size=256, fp16=True,
+                    desc=None):
     """ids: (N, T) int64 already tokenized with the MiniLM/XLM-R tokenizer.
-    Returns (N, D) float array. Mean-pool over non-pad tokens (== embed_sentences)."""
-    out = np.empty((ids.shape[0], model.config.hidden_size),
+    Returns (N, D) float array. Mean-pool over non-pad tokens (== embed_sentences).
+    Pass desc to show a per-sentence tqdm bar (no-op if tqdm isn't installed)."""
+    n = ids.shape[0]
+    out = np.empty((n, model.config.hidden_size),
                    dtype=np.float16 if fp16 else np.float32)
-    for i in range(0, ids.shape[0], batch_size):
+    starts = range(0, n, batch_size)
+    if tqdm is not None and desc is not None:
+        starts = tqdm(starts, desc=desc, total=(n + batch_size - 1) // batch_size,
+                      unit="batch", leave=False)
+    for i in starts:
         chunk = torch.as_tensor(ids[i:i + batch_size], dtype=torch.long, device=device)
         attn = (chunk != pad_token_id).long()
         h = model(input_ids=chunk, attention_mask=attn).last_hidden_state
