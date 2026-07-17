@@ -1,0 +1,14 @@
+# Cerebras port environment (x86 only — the cerebras-pytorch wheel is x86_64).
+# Create a SEPARATE env from the GB10 `nubun` conda env; the Torch build differs.
+#
+#   python -m venv ~/venvs/nubun-cs && source ~/venvs/nubun-cs/bin/activate
+#   pip install -r cerebras/requirements-cerebras.txt
+#
+# Pin cerebras-pytorch to the version matching the CS-3 cluster's software stack
+# (ask the cluster admin / check `csctl` — client and appliance versions must match).
+cerebras_pytorch      # == <MATCH THE CLUSTER RELEASE, e.g. 2.5.0>
+numpy
+# transformers/torch come in as cerebras_pytorch deps; only needed standalone for
+# the offline semantic-target precompute (precompute_semantic_targets.py), which
+# you can instead run on the GB10 in the `nubun` env and copy the .npy over.
+transformers          # only for precompute_semantic_targets.py

@@ -14,6 +14,7 @@ encoder outputs in the current batch.
 
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 
 class VectorQuantizer(nn.Module):
@@ -77,7 +78,11 @@ class VectorQuantizer(nn.Module):
         # Straight-through estimator
         z_q_flat = flat + (z_q_flat - flat).detach()
 
-        usage = torch.bincount(indices, minlength=self.k).float()
+        # Usage counts per code. one_hot().sum() is equivalent to
+        # bincount(minlength=k) but has a STATIC output shape, so it traces on
+        # static-graph backends (Cerebras cstorch); bincount's output size is
+        # data-dependent and does not lower. Identical values on all backends.
+        usage = F.one_hot(indices, self.k).sum(dim=0).float()
 
         z_q = z_q_flat.view(B, M, D)
         idx = indices.view(B, M)
@@ -257,7 +262,9 @@ class ResidualVectorQuantizer(nn.Module):
         # Straight-through on the full multi-level sum
         z_q_flat = flat + (quantized - flat).detach()
         losses = {"commit": self.beta_commit * commit, "codebook": codebook}
-        usage = torch.bincount(idx0, minlength=self.k).float()
+        # one_hot().sum() == bincount(minlength=k) but with a static output shape
+        # (traces on Cerebras cstorch; bincount's data-dependent size does not).
+        usage = F.one_hot(idx0, self.k).sum(dim=0).float()
         return z_q_flat.view(B, M, D), idx0.view(B, M), losses, usage
 
     # --- compatibility shims (operate on level-0 indices; unused w/o stop-mask) ---
