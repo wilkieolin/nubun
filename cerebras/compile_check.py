@@ -55,7 +55,8 @@ def build_model(cfg, emb):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--checkpoint", required=True)
+    ap.add_argument("--checkpoint",
+                    help="Frozen checkpoint (omit with --synthetic).")
     ap.add_argument("--embedding-table", default="data/embedding_table.pt")
     ap.add_argument("--batch-size", type=int, default=8)
     ap.add_argument("--seq-len", type=int, default=48)
@@ -63,11 +64,41 @@ def main():
     ap.add_argument("--load-weights", action="store_true",
                     help="Also load the trained weights (tests state_dict load); "
                          "off by default so the check runs with just the config.")
+    ap.add_argument("--synthetic", action="store_true",
+                    help="Build a tiny RVQ config + random embedding table instead "
+                         "of loading the frozen checkpoint. Lets the gate check run "
+                         "with NO data/ files — validates that the model + custom RVQ "
+                         "+ semantic head lower under the installed cstorch, before "
+                         "the 1.6G checkpoint is available.")
     args = ap.parse_args()
 
-    ckpt = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
-    cfg = ckpt["args"]
-    emb = torch.load(args.embedding_table, map_location="cpu")
+    if args.synthetic:
+        # Shape-accurate miniature of the frozen E3 recipe: RVQ + tied emb +
+        # semantic head, just small. Values are irrelevant for a compile test.
+        cfg = dict(n_langs=4, d_model=128, d_code=64, k=32, m_max=16,
+                   n_enc_layers=2, n_dec_layers=2, n_heads=4, d_ff=256,
+                   beta_commit=0.25, pad_token_id=1,
+                   use_semantic_head=True, use_rvq=True, n_rvq_levels=4,
+                   decoder_type="ar", tie_embeddings=True)
+        emb = torch.randn(512, cfg["d_model"])
+        ckpt = None
+    else:
+        if not args.checkpoint:
+            sys.exit("--checkpoint is required unless --synthetic is set.")
+        ckpt = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+        cfg = ckpt["args"]
+        try:
+            emb = torch.load(args.embedding_table, map_location="cpu")
+        except FileNotFoundError:
+            # The tied+unfrozen checkpoint already carries the token embedding
+            # table (encoder.token_emb.weight). For a compile check we only need
+            # its SHAPE — the values are overwritten by --load-weights anyway and
+            # irrelevant otherwise — so reconstruct a same-shape table and skip
+            # needing the separate embedding_table.pt (see PORT_CS3 §4).
+            w = ckpt["model_state"]["encoder.token_emb.weight"]
+            print(f"embedding_table not found; deriving shape {tuple(w.shape)} "
+                  f"from checkpoint's encoder.token_emb.weight")
+            emb = torch.randn_like(w)
     pad = cfg.get("pad_token_id", 1)
     vocab, d_sem = emb.shape[0], 384
     print(f"cfg: RVQ={cfg.get('use_rvq')} levels={cfg.get('n_rvq_levels')} "
@@ -81,6 +112,8 @@ def main():
 
     model = build_model(cfg, emb)
     if args.load_weights:
+        if ckpt is None:
+            sys.exit("--load-weights needs a real --checkpoint (not --synthetic).")
         model.load_state_dict(ckpt["model_state"], strict=False)
     model.train()
 
@@ -123,8 +156,9 @@ def main():
         return gen()
 
     dataloader = cstorch.utils.data.DataLoader(input_fn)          # VERIFY namespace
-    executor = cstorch.utils.data.DataExecutor(                   # VERIFY namespace
-        dataloader, num_steps=1, backend=backend)
+    # DataExecutor takes NO backend kwarg in cstorch 2.10.0 — the backend is bound
+    # globally by cstorch.backend()/cstorch.compile above.
+    executor = cstorch.utils.data.DataExecutor(dataloader, num_steps=1)
 
     print("Tracing + compiling one step (compile_only, no wafer)...")
     for batch in executor:
