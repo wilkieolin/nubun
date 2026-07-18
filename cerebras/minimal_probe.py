@@ -44,7 +44,18 @@ def main():
                          "train_cstorch warmup(from 0)+cosine schedule, stepped "
                          "in-loop. Tests whether LR=0 on the compiled first step "
                          "zeros the weight updates and empties the graph.")
+    ap.add_argument("--model", choices=["mlp", "vqvae"], default="mlp",
+                    help="mlp = canonical 2-layer net. vqvae = our real model "
+                         "(small synthetic config). Bisects whether the empty "
+                         "module is model-specific.")
+    ap.add_argument("--no-rvq", action="store_true",
+                    help="vqvae only: use plain VQ instead of residual VQ.")
+    ap.add_argument("--no-tie", action="store_true",
+                    help="vqvae only: untie enc/dec/output embeddings.")
     args = ap.parse_args()
+
+    if args.model == "vqvae":
+        return run_vqvae(args)
 
     class MLP(torch.nn.Module):
         def __init__(self):
@@ -133,6 +144,72 @@ def main():
         print_loss(loss, step)
         step += 1
     print("minimal_probe: DONE — standalone loop compiled and executed.")
+
+
+def run_vqvae(args):
+    """Run OUR VQVAE (small synthetic config) through the same known-good loop
+    the MLP just passed. Isolates the model as the empty-CIRH cause and, via
+    --no-rvq / --no-tie, which component. Uses SGD + torch DataLoader (both
+    already proven fine) so the model is the only new variable."""
+    import sys
+    sys.path.insert(0, REPO_ROOT)
+    from vqvae.model import VQVAE
+
+    vocab, d_model, T, B, n_langs = 512, 128, 16, 8, 4
+    emb = torch.randn(vocab, d_model)
+    model = VQVAE(
+        vocab_size=vocab, n_langs=n_langs, d_model=d_model, d_code=64, k=32,
+        m_max=16, n_enc_layers=2, n_dec_layers=2, n_heads=4, d_ff=256,
+        beta_commit=0.25, pad_token_id=1, embedding_table=emb,
+        use_semantic_head=False, use_rvq=not args.no_rvq, n_rvq_levels=4,
+        decoder_type="ar", tie_embeddings=not args.no_tie,
+    )
+    model.train()
+    print(f"minimal_probe: model=vqvae rvq={not args.no_rvq} tie={not args.no_tie}")
+
+    cluster_config = cstorch.distributed.ClusterConfig(
+        num_csx=1, job_labels=["name=minprobe-vqvae"], job_time_sec=3600,
+        mount_dirs=[REPO_ROOT], python_paths=[REPO_ROOT],
+    )
+    backend = cstorch.backend("CSX", cluster_config=cluster_config)
+    compiled_model = cstorch.compile(model, backend)
+    optimizer = cstorch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
+
+    def input_fn():
+        def gen():
+            for _ in range(7):
+                yield {
+                    "src_ids": torch.randint(4, vocab, (B, T)),
+                    "tgt_ids": torch.randint(4, vocab, (B, T)),
+                    "tgt_lang_id": torch.randint(0, n_langs, (B,)),
+                }
+        return gen()
+    dataloader = cstorch.utils.data.DataLoader(input_fn)
+
+    @cstorch.trace
+    def training_step(batch):
+        out = compiled_model(batch["src_ids"], batch["tgt_ids"], batch["tgt_lang_id"])
+        logits = out["logits"]
+        recon = F.cross_entropy(logits.reshape(-1, logits.size(-1)),
+                                batch["tgt_ids"][:, 1:].reshape(-1), ignore_index=1)
+        loss = recon + out["vq_losses"]["commit"] + out["vq_losses"]["codebook"]
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+        return loss
+
+    @cstorch.step_closure
+    def print_loss(loss, step):
+        print(f"step {step}: loss={loss.item():.4f}")
+
+    executor = cstorch.utils.data.DataExecutor(dataloader, num_steps=5)
+    step = 0
+    print("minimal_probe: starting VQVAE loop...")
+    for batch in executor:
+        loss = training_step(batch)
+        print_loss(loss, step)
+        step += 1
+    print("minimal_probe: DONE — VQVAE compiled and executed.")
 
 
 if __name__ == "__main__":
