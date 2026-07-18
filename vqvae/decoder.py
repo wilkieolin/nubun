@@ -89,10 +89,12 @@ class Decoder(nn.Module):
         mem = self.bottleneck_proj(bottleneck)              # (B, M, d_model)
         lang_token = self.lang_emb(lang_id).unsqueeze(1)    # (B, 1, d_model)
         mem = torch.cat([lang_token, mem], dim=1)           # (B, M+1, d_model)
-        # Lang token is always valid; bottleneck_mask appended after
-        lang_mask = torch.ones(B, 1, dtype=torch.bool, device=device)
-        mem_valid = torch.cat([lang_mask, bottleneck_mask], dim=1)  # (B, M+1)
-        mem_pad_mask = ~mem_valid                                    # nn expects "True = pad"
+        # Lang token is always valid; bottleneck_mask appended after. cstorch's
+        # concat rejects bool (i1) tensors ("integer dtype must be i32 or i16"),
+        # so build validity in int32 and derive the pad mask by comparison.
+        lang_valid = torch.ones(B, 1, dtype=torch.int32, device=device)
+        mem_valid = torch.cat([lang_valid, bottleneck_mask.to(torch.int32)], dim=1)  # (B, M+1)
+        mem_pad_mask = mem_valid == 0                                # True = pad
 
         # Decoder input: token embeddings + positional
         tgt_emb = self.token_emb(target_ids)

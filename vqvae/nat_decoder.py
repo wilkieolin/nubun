@@ -100,9 +100,10 @@ class NATDecoder(nn.Module):
         mem = self.bottleneck_proj(bottleneck)
         lang_token = self.lang_emb(lang_id).unsqueeze(1)
         mem = torch.cat([lang_token, mem], dim=1)
-        lang_mask = torch.ones(B, 1, dtype=torch.bool, device=device)
-        mem_valid = torch.cat([lang_mask, bottleneck_mask], dim=1)
-        mem_pad_mask = ~mem_valid
+        # int32 concat (cstorch's concat rejects bool/i1), then derive pad mask.
+        lang_valid = torch.ones(B, 1, dtype=torch.int32, device=device)
+        mem_valid = torch.cat([lang_valid, bottleneck_mask.to(torch.int32)], dim=1)
+        mem_pad_mask = mem_valid == 0
 
         # Query grid: position embeddings + broadcast lang tag; no token content.
         q = self.pos(T, device).expand(B, -1, -1).clone()      # (B, T, d_model)
