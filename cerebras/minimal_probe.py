@@ -44,11 +44,11 @@ def main():
                          "train_cstorch warmup(from 0)+cosine schedule, stepped "
                          "in-loop. Tests whether LR=0 on the compiled first step "
                          "zeros the weight updates and empties the graph.")
-    ap.add_argument("--model", choices=["mlp", "attn", "vqvae"], default="mlp",
-                    help="mlp = canonical 2-layer net. attn = a bare "
-                         "nn.TransformerEncoder (tests whether torch's built-in "
-                         "transformer/attention lowers on cstorch). vqvae = our "
-                         "real model (small synthetic config).")
+    ap.add_argument("--model", choices=["mlp", "attn", "attn2", "vqvae"], default="mlp",
+                    help="mlp = canonical net. attn = bare nn.TransformerEncoder "
+                         "(torch's fused attention). attn2 = SAME shape but a "
+                         "hand-written attention (explicit Q/K/V + softmax(QKt)V, "
+                         "no SDPA) — tests the fix. vqvae = our real model.")
     ap.add_argument("--no-rvq", action="store_true",
                     help="vqvae only: use plain VQ instead of residual VQ.")
     ap.add_argument("--no-tie", action="store_true",
@@ -59,6 +59,8 @@ def main():
         return run_vqvae(args)
     if args.model == "attn":
         return run_attn(args)
+    if args.model == "attn2":
+        return run_attn2(args)
 
     class MLP(torch.nn.Module):
         def __init__(self):
@@ -211,6 +213,103 @@ def run_attn(args):
         print_loss(loss, step)
         step += 1
     print("minimal_probe: DONE — nn.TransformerEncoder compiled and executed.")
+
+
+def run_attn2(args):
+    """Same shape as run_attn, but attention written with EXPLICIT ops (no
+    nn.MultiheadAttention / scaled_dot_product_attention). If this compiles
+    while run_attn hits the aamatmul assertion, the fix is to hand-roll
+    attention in vqvae/encoder.py + decoder.py."""
+    vocab, d_model, T, B, n_cls, H = 512, 128, 16, 8, 10, 4
+    dh = d_model // H
+
+    class ManualMHA(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.q = torch.nn.Linear(d_model, d_model)
+            self.k = torch.nn.Linear(d_model, d_model)
+            self.v = torch.nn.Linear(d_model, d_model)
+            self.o = torch.nn.Linear(d_model, d_model)
+
+        def forward(self, x):
+            b, t, _ = x.shape
+            q = self.q(x).view(b, t, H, dh).transpose(1, 2)   # (b,H,t,dh)
+            k = self.k(x).view(b, t, H, dh).transpose(1, 2)
+            v = self.v(x).view(b, t, H, dh).transpose(1, 2)
+            att = torch.matmul(q, k.transpose(-2, -1)) / (dh ** 0.5)
+            att = torch.softmax(att, dim=-1)
+            out = torch.matmul(att, v).transpose(1, 2).reshape(b, t, d_model)
+            return self.o(out)
+
+    class Block(torch.nn.Module):        # pre-norm, matches norm_first=True
+        def __init__(self):
+            super().__init__()
+            self.n1 = torch.nn.LayerNorm(d_model)
+            self.attn = ManualMHA()
+            self.n2 = torch.nn.LayerNorm(d_model)
+            self.ff = torch.nn.Sequential(
+                torch.nn.Linear(d_model, 256), torch.nn.ReLU(),
+                torch.nn.Linear(256, d_model))
+
+        def forward(self, x):
+            x = x + self.attn(self.n1(x))
+            x = x + self.ff(self.n2(x))
+            return x
+
+    class AttnNet(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.emb = torch.nn.Embedding(vocab, d_model)
+            self.blocks = torch.nn.ModuleList([Block(), Block()])
+            self.head = torch.nn.Linear(d_model, n_cls)
+
+        def forward(self, ids):
+            h = self.emb(ids)
+            for blk in self.blocks:
+                h = blk(h)
+            return self.head(h.mean(dim=1))
+
+    model = AttnNet()
+    model.train()
+    print("minimal_probe: model=attn2 (hand-written attention, no SDPA)")
+
+    cluster_config = cstorch.distributed.ClusterConfig(
+        num_csx=1, job_labels=["name=minprobe-attn2"], job_time_sec=3600,
+        mount_dirs=[REPO_ROOT], python_paths=[REPO_ROOT],
+    )
+    backend = cstorch.backend("CSX", cluster_config=cluster_config)
+    compiled_model = cstorch.compile(model, backend)
+    optimizer = cstorch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
+
+    def input_fn():
+        def gen():
+            for _ in range(7):
+                yield (torch.randint(0, vocab, (B, T)),
+                       torch.randint(0, n_cls, (B,), dtype=torch.int32))
+        return gen()
+    dataloader = cstorch.utils.data.DataLoader(input_fn)
+    loss_fn = torch.nn.CrossEntropyLoss()
+
+    @cstorch.trace
+    def training_step(ids, targets):
+        loss = loss_fn(compiled_model(ids), targets)
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+        return loss
+
+    @cstorch.step_closure
+    def print_loss(loss, step):
+        print(f"step {step}: loss={loss.item():.4f}")
+
+    executor = cstorch.utils.data.DataExecutor(dataloader, num_steps=5)
+    step = 0
+    print("minimal_probe: starting attn2 (manual) loop...")
+    for ids, targets in executor:
+        loss = training_step(ids, targets)
+        print_loss(loss, step)
+        step += 1
+    print("minimal_probe: DONE — manual attention compiled and executed.")
 
 
 def run_vqvae(args):
