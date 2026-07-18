@@ -5,6 +5,8 @@ import math
 import torch
 from torch import nn
 
+from vqvae import cs_attention
+
 
 class SinusoidalPositionalEmbedding(nn.Module):
     def __init__(self, d_model: int, max_len: int = 4096):
@@ -58,17 +60,18 @@ class Encoder(nn.Module):
             self.token_emb.weight.requires_grad = False  # frozen
         self.pos = SinusoidalPositionalEmbedding(d_model)
 
-        enc_layer = nn.TransformerEncoderLayer(
-            d_model=d_model, nhead=n_heads, dim_feedforward=d_ff,
-            dropout=dropout, batch_first=True, norm_first=True,
-            activation="gelu",
-        )
-        self.encoder = nn.TransformerEncoder(enc_layer, num_layers=n_enc_layers)
+        # cs_attention: explicit-ops, cstorch-compatible, weight-compatible with
+        # nn.TransformerEncoder(nn.TransformerEncoderLayer(norm_first, gelu)).
+        # torch's fused attention does not lower on the CS-3 (see cs_attention.py).
+        self.encoder = cs_attention.TransformerEncoder(
+            lambda: cs_attention.TransformerEncoderLayer(
+                d_model=d_model, nhead=n_heads, dim_feedforward=d_ff, dropout=dropout),
+            num_layers=n_enc_layers)
 
         # Perceiver-style readout: M_max learned queries cross-attend to encoded tokens
         self.readout_queries = nn.Parameter(torch.randn(m_max, d_model) * 0.02)
-        self.readout_attn = nn.MultiheadAttention(
-            d_model, n_heads, dropout=dropout, batch_first=True)
+        self.readout_attn = cs_attention.MultiheadAttention(
+            d_model, n_heads, dropout=dropout)
         self.readout_norm_q = nn.LayerNorm(d_model)
         self.readout_norm_kv = nn.LayerNorm(d_model)
         self.readout_ff = nn.Sequential(
@@ -93,8 +96,8 @@ class Encoder(nn.Module):
         q = self.readout_queries.unsqueeze(0).expand(B, -1, -1)  # (B, M, d_model)
         q_norm = self.readout_norm_q(q)
         h_norm = self.readout_norm_kv(h)
-        attn_out, _ = self.readout_attn(
-            q_norm, h_norm, h_norm, key_padding_mask=pad_mask, need_weights=False)
+        attn_out = self.readout_attn(
+            q_norm, h_norm, h_norm, key_padding_mask=pad_mask)
         z = q + attn_out
         z = z + self.readout_ff(z)
 

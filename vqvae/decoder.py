@@ -5,6 +5,8 @@ import math
 import torch
 from torch import nn
 
+from vqvae import cs_attention
+
 
 class SinusoidalPositionalEmbedding(nn.Module):
     def __init__(self, d_model: int, max_len: int = 4096):
@@ -59,12 +61,13 @@ class Decoder(nn.Module):
         self.lang_emb = nn.Embedding(n_langs, d_model)
         self.bottleneck_proj = nn.Linear(d_code, d_model)
 
-        dec_layer = nn.TransformerDecoderLayer(
-            d_model=d_model, nhead=n_heads, dim_feedforward=d_ff,
-            dropout=dropout, batch_first=True, norm_first=True,
-            activation="gelu",
-        )
-        self.decoder = nn.TransformerDecoder(dec_layer, num_layers=n_dec_layers)
+        # cs_attention: explicit-ops, cstorch-compatible, weight-compatible with
+        # nn.TransformerDecoder(nn.TransformerDecoderLayer(norm_first, gelu)).
+        # torch's fused attention does not lower on the CS-3 (see cs_attention.py).
+        self.decoder = cs_attention.TransformerDecoder(
+            lambda: cs_attention.TransformerDecoderLayer(
+                d_model=d_model, nhead=n_heads, dim_feedforward=d_ff, dropout=dropout),
+            num_layers=n_dec_layers)
         self.out_norm = nn.LayerNorm(d_model)
 
         # Output projection ties to embedding table (parameter sharing).
@@ -104,17 +107,12 @@ class Decoder(nn.Module):
         _cols = torch.arange(T, device=device).view(1, -1)
         causal_mask = _cols > _rows
 
-        # tgt_is_causal=True tells nn.TransformerDecoder our tgt_mask is causal,
-        # so it skips _detect_is_causal_mask — whose internal torch.triu(bool)
-        # does not lower on cstorch. The mask is genuinely causal, so this is a
-        # correct hint and leaves GB10 behavior unchanged.
         h = self.decoder(
             tgt=tgt_emb,
             memory=mem,
             tgt_mask=causal_mask,
             tgt_key_padding_mask=tgt_pad_mask,
             memory_key_padding_mask=mem_pad_mask,
-            tgt_is_causal=True,
         )
         h = self.out_norm(h)
 
