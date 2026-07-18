@@ -92,8 +92,10 @@ class Encoder(nn.Module):
         x = self.pos(x)
         h = self.encoder(x, src_key_padding_mask=pad_mask)  # (B, T, d_model)
 
-        # Perceiver readout — M queries attend to T tokens
-        q = self.readout_queries.unsqueeze(0).expand(B, -1, -1)  # (B, M, d_model)
+        # Perceiver readout — M queries attend to T tokens.
+        # .expand gives a stride-0 broadcast view; LayerNorm has no WSE kernel for
+        # that, so materialize it with .contiguous() (repeat the queries per batch).
+        q = self.readout_queries.unsqueeze(0).expand(B, -1, -1).contiguous()  # (B, M, d_model)
         q_norm = self.readout_norm_q(q)
         h_norm = self.readout_norm_kv(h)
         attn_out = self.readout_attn(
