@@ -59,11 +59,18 @@ class MultiheadAttention(nn.Module):
         key_padding_mask (B,Lk) bool: True = ignore (pad).
         attn_mask (Lq,Lk) bool: True = disallowed (e.g. causal upper triangle)."""
         E, H, dh = self.embed_dim, self.num_heads, self.head_dim
-        wq, wk, wv = self.in_proj_weight.split(E, dim=0)
-        bq, bk, bv = self.in_proj_bias.split(E, dim=0)
-        q = F.linear(query, wq, bq)
-        k = F.linear(key, wk, bk)
-        v = F.linear(value, wv, bv)
+        # Project with the FULL packed in_proj, then slice the ACTIVATION outputs.
+        # Splitting the (3E,E) weight parameter emits aten::split_copy on a
+        # WGT_HOST tensor, which cstorch cannot transfer to the WSE; slicing the
+        # projected activation (on the WSE) is fine. F.linear(x, W)[..., :E] ==
+        # F.linear(x, W[:E]), so this is numerically identical to a QKV split.
+        if query is key and key is value:                 # self-attention
+            qkv = F.linear(query, self.in_proj_weight, self.in_proj_bias)
+            q, k, v = qkv[..., :E], qkv[..., E:2 * E], qkv[..., 2 * E:]
+        else:                                             # cross-attention
+            q = F.linear(query, self.in_proj_weight, self.in_proj_bias)[..., :E]
+            kv = F.linear(key, self.in_proj_weight, self.in_proj_bias)
+            k, v = kv[..., E:2 * E], kv[..., 2 * E:]
 
         B, Lq, _ = q.shape
         Lk = k.shape[1]
