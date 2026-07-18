@@ -44,10 +44,11 @@ def main():
                          "train_cstorch warmup(from 0)+cosine schedule, stepped "
                          "in-loop. Tests whether LR=0 on the compiled first step "
                          "zeros the weight updates and empties the graph.")
-    ap.add_argument("--model", choices=["mlp", "vqvae"], default="mlp",
-                    help="mlp = canonical 2-layer net. vqvae = our real model "
-                         "(small synthetic config). Bisects whether the empty "
-                         "module is model-specific.")
+    ap.add_argument("--model", choices=["mlp", "attn", "vqvae"], default="mlp",
+                    help="mlp = canonical 2-layer net. attn = a bare "
+                         "nn.TransformerEncoder (tests whether torch's built-in "
+                         "transformer/attention lowers on cstorch). vqvae = our "
+                         "real model (small synthetic config).")
     ap.add_argument("--no-rvq", action="store_true",
                     help="vqvae only: use plain VQ instead of residual VQ.")
     ap.add_argument("--no-tie", action="store_true",
@@ -56,6 +57,8 @@ def main():
 
     if args.model == "vqvae":
         return run_vqvae(args)
+    if args.model == "attn":
+        return run_attn(args)
 
     class MLP(torch.nn.Module):
         def __init__(self):
@@ -144,6 +147,70 @@ def main():
         print_loss(loss, step)
         step += 1
     print("minimal_probe: DONE — standalone loop compiled and executed.")
+
+
+def run_attn(args):
+    """Bare nn.TransformerEncoder — the ONE thing the VQVAE has that the MLP
+    doesn't (our encoder/decoder use torch's built-in transformer + MHA, which
+    dispatch to scaled_dot_product_attention). Same known-good loop otherwise.
+    If this fails empty, torch's transformer is what won't lower on cstorch."""
+    vocab, d_model, T, B, n_cls = 512, 128, 16, 8, 10
+
+    class AttnNet(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.emb = torch.nn.Embedding(vocab, d_model)
+            layer = torch.nn.TransformerEncoderLayer(
+                d_model, nhead=4, dim_feedforward=256, dropout=0.0,
+                batch_first=True, norm_first=True)      # matches vqvae/encoder.py
+            self.enc = torch.nn.TransformerEncoder(layer, num_layers=2)
+            self.head = torch.nn.Linear(d_model, n_cls)
+
+        def forward(self, ids):
+            h = self.enc(self.emb(ids))
+            return self.head(h.mean(dim=1))
+
+    model = AttnNet()
+    model.train()
+    print("minimal_probe: model=attn (bare nn.TransformerEncoder)")
+
+    cluster_config = cstorch.distributed.ClusterConfig(
+        num_csx=1, job_labels=["name=minprobe-attn"], job_time_sec=3600,
+        mount_dirs=[REPO_ROOT], python_paths=[REPO_ROOT],
+    )
+    backend = cstorch.backend("CSX", cluster_config=cluster_config)
+    compiled_model = cstorch.compile(model, backend)
+    optimizer = cstorch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
+
+    def input_fn():
+        def gen():
+            for _ in range(7):
+                yield (torch.randint(0, vocab, (B, T)),
+                       torch.randint(0, n_cls, (B,), dtype=torch.int32))
+        return gen()
+    dataloader = cstorch.utils.data.DataLoader(input_fn)
+    loss_fn = torch.nn.CrossEntropyLoss()
+
+    @cstorch.trace
+    def training_step(ids, targets):
+        loss = loss_fn(compiled_model(ids), targets)
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+        return loss
+
+    @cstorch.step_closure
+    def print_loss(loss, step):
+        print(f"step {step}: loss={loss.item():.4f}")
+
+    executor = cstorch.utils.data.DataExecutor(dataloader, num_steps=5)
+    step = 0
+    print("minimal_probe: starting attn loop...")
+    for ids, targets in executor:
+        loss = training_step(ids, targets)
+        print_loss(loss, step)
+        step += 1
+    print("minimal_probe: DONE — nn.TransformerEncoder compiled and executed.")
 
 
 def run_vqvae(args):

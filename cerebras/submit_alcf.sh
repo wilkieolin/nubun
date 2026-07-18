@@ -50,6 +50,9 @@ case "$mode" in
   minprobe-adamw) # same MLP, but AdamW + warmup-from-0 cosine (train_cstorch).
             # Tests whether LR=0 on the compiled first step empties the graph.
     python cerebras/minimal_probe.py --opt adamw |& tee minprobe_adamw.log ;;
+  minprobe-attn) # bare nn.TransformerEncoder — does torch's built-in
+            # transformer/attention lower on cstorch at all?
+    python cerebras/minimal_probe.py --model attn |& tee minprobe_attn.log ;;
   minprobe-vqvae) # OUR model (small synthetic) through the known-good loop.
             # Add --no-rvq / --no-tie after the target to bisect components.
     python cerebras/minimal_probe.py --model vqvae "${@:2}" |& tee minprobe_vqvae.log ;;
@@ -69,5 +72,5 @@ case "$mode" in
     python cerebras/train_cstorch.py --steps 100000 \
       --job-label name=nubun-m2 "${common[@]}" |& tee m2.log ;;
   *)
-    echo "usage: $0 {minprobe|minprobe-raw|minprobe-adamw|minprobe-vqvae|smoke|compile|m1|m2}" >&2; exit 2 ;;
+    echo "usage: $0 {minprobe|minprobe-raw|minprobe-adamw|minprobe-attn|minprobe-vqvae|smoke|compile|m1|m2}" >&2; exit 2 ;;
 esac
