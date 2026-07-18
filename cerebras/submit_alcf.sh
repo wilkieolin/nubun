@@ -41,6 +41,9 @@ common=(--num-csx "$NUM_CSX" --job-time-sec "$JOB_TIME_SEC"
 cd "$REPO"
 mode="${1:-smoke}"
 case "$mode" in
+  minprobe) # canonical MLP standalone loop — does ANY raw cstorch loop compile
+            # on this cluster, or only cszoo fit? No data, nothing of ours.
+    python cerebras/minimal_probe.py |& tee minprobe.log ;;
   smoke)    # EXECUTE mode, synthetic data, tiny — isolates compile of OUR graph
             # from data + from --compile-only. No data/ files needed. This is the
             # exact M1 graph; if it compiles+executes, the empty-CIRH issue was
@@ -57,5 +60,5 @@ case "$mode" in
     python cerebras/train_cstorch.py --steps 100000 \
       --job-label name=nubun-m2 "${common[@]}" |& tee m2.log ;;
   *)
-    echo "usage: $0 {smoke|compile|m1|m2}" >&2; exit 2 ;;
+    echo "usage: $0 {minprobe|smoke|compile|m1|m2}" >&2; exit 2 ;;
 esac
