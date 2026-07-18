@@ -160,10 +160,19 @@ def main():
     # globally by cstorch.backend()/cstorch.compile above.
     executor = cstorch.utils.data.DataExecutor(dataloader, num_steps=1)
 
+    # Fetching a graph output anchors the traced step — without it cstorch
+    # dead-code-eliminates the step to an empty graph ("Cannot compile empty
+    # CIRH module"). The .item() must be registered during the (first) trace, so
+    # fetch unconditionally inside a step_closure.
+    @cstorch.step_closure
+    def fetch_loss(loss):
+        _ = loss.item()
+
     print("Tracing + compiling one step (compile_only, no wafer)...")
     for batch in executor:
         loss = train_step(batch["src_ids"], batch["tgt_ids"],
                           batch["tgt_lang_id"], batch["sem_target"])
+        fetch_loss(loss)
     print("COMPILE CHECK PASSED — the frozen model lowers to the WSE.")
 
 

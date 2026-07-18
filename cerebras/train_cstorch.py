@@ -241,9 +241,16 @@ def main():
 
     @cstorch.step_closure
     def log_step(step, loss, recon):
-        # Host-side read is legal ONLY inside a step_closure.
+        # Fetch the returned tensors EVERY step. Fetching a graph output is what
+        # anchors the traced step: cstorch dead-code-eliminates a step with no
+        # requested outputs down to an empty graph ("Cannot compile empty CIRH
+        # module"). The step is compiled once and replayed, so the fetch must be
+        # unconditional and identical every step — only the print is throttled.
+        # (Host-side reads are legal ONLY inside a step_closure.)
+        loss_v = loss.item()
+        recon_v = recon.item()
         if step % args.log_every == 0:
-            print(f"step {step:>7}  loss={loss.item():.4f}  recon={recon.item():.4f}")
+            print(f"step {step:>7}  loss={loss_v:.4f}  recon={recon_v:.4f}")
 
     @cstorch.checkpoint_closure
     def save_ckpt(step):

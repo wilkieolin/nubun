@@ -141,6 +141,19 @@ status:
 - **No tensor-value reads in the traced step** (`.item()`, `.max()`-in-a-python-
   `if`, `print(tensor)`, `.to("cpu")`) — they raise `aten::_local_scalar_dense`.
   → All logging/`.item()` lives in `@cstorch.step_closure` in the scaffold.
+- **You MUST fetch a graph output every step, unconditionally.** Fetching a
+  returned tensor (e.g. `loss.item()` in a step_closure) is what *anchors* the
+  traced step; a step whose compiled graph requests no outputs is dead-code-
+  eliminated to nothing and the appliance rejects it with **`WSAP011 Cannot
+  compile empty CIRH module`**. The step is compiled once and replayed, so the
+  fetch must be unconditional and identical on every step — throttle only the
+  *print*, never the `.item()`. This bit us: `log_step` originally fetched only
+  every `log_every` steps, so step 1 (the compiled step) fetched nothing and the
+  whole model lowered to an empty module even though the torch graph was sound
+  (grads reached 87/92 params locally). Fixed in `train_cstorch.py` /
+  `compile_check.py`. Note: the version-skew warning `client 1.14.0 vs server
+  1.20.2` on the ALCF cluster is **benign** — a fresh modelzoo gpt3 compile
+  succeeds through it; it was not the cause.
 - **No data-dependent Python control flow** — the RVQ's `for level in
   range(n_levels)` is a *fixed-count* loop (static unroll, fine) and `if
   level == 0` is a Python-int test (trace-time, fine). ✓
