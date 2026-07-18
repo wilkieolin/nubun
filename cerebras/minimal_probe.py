@@ -39,6 +39,11 @@ def main():
     ap.add_argument("--raw-input", action="store_true",
                     help="Feed a raw generator of pre-batched tuples (as "
                          "train_cstorch does) instead of a torch DataLoader.")
+    ap.add_argument("--opt", choices=["sgd", "adamw"], default="sgd",
+                    help="sgd = constant lr (canonical). adamw = AdamW + the "
+                         "train_cstorch warmup(from 0)+cosine schedule, stepped "
+                         "in-loop. Tests whether LR=0 on the compiled first step "
+                         "zeros the weight updates and empties the graph.")
     args = ap.parse_args()
 
     class MLP(torch.nn.Module):
@@ -62,7 +67,23 @@ def main():
 
     model = MLP()
     compiled_model = cstorch.compile(model, backend)
-    optimizer = cstorch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
+
+    lr_scheduler = None
+    if args.opt == "sgd":
+        optimizer = cstorch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
+    else:
+        # Mirror train_cstorch exactly: AdamW + LinearLR warmup from 0.0 -> lr,
+        # then cosine. Warmup starting at 0 means step 1 runs at LR=0.
+        optimizer = cstorch.optim.AdamW(model.parameters(), lr=3e-4)
+        lr = 3e-4
+        warmup = cstorch.optim.lr_scheduler.LinearLR(
+            optimizer, initial_learning_rate=0.0, end_learning_rate=lr, total_iters=500)
+        cosine = cstorch.optim.lr_scheduler.CosineDecayLR(
+            optimizer, initial_learning_rate=lr, end_learning_rate=lr * 0.1,
+            total_iters=1000)
+        lr_scheduler = cstorch.optim.lr_scheduler.SequentialLR(
+            optimizer, schedulers=[warmup, cosine], milestones=[500])
+    print(f"minimal_probe: optimizer = {args.opt}")
 
     def input_fn_dl():
         # A real torch DataLoader (as the canonical example uses), over a
@@ -95,6 +116,8 @@ def main():
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
+        if lr_scheduler is not None:
+            lr_scheduler.step()
         return loss
 
     @cstorch.step_closure
