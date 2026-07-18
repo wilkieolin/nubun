@@ -39,8 +39,14 @@ common=(--num-csx "$NUM_CSX" --job-time-sec "$JOB_TIME_SEC"
         --mount-dirs "$MOUNT_DIRS" --python-paths "$PYTHON_PATHS")
 
 cd "$REPO"
-mode="${1:-compile}"
+mode="${1:-smoke}"
 case "$mode" in
+  smoke)    # EXECUTE mode, synthetic data, tiny — isolates compile of OUR graph
+            # from data + from --compile-only. No data/ files needed. This is the
+            # exact M1 graph; if it compiles+executes, the empty-CIRH issue was
+            # the compile-only path, and m1 (real data) should follow.
+    python cerebras/train_cstorch.py --no-semantic --synthetic-data --steps 10 \
+      --job-label name=nubun-smoke "${common[@]}" |& tee smoke.log ;;
   compile)  # trace + compile only, no wafer execution
     python cerebras/train_cstorch.py --no-semantic --steps 2000 --compile-only \
       --job-label name=nubun-compile "${common[@]}" |& tee compile.log ;;
@@ -51,5 +57,5 @@ case "$mode" in
     python cerebras/train_cstorch.py --steps 100000 \
       --job-label name=nubun-m2 "${common[@]}" |& tee m2.log ;;
   *)
-    echo "usage: $0 {compile|m1|m2}" >&2; exit 2 ;;
+    echo "usage: $0 {smoke|compile|m1|m2}" >&2; exit 2 ;;
 esac
