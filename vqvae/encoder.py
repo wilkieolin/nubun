@@ -92,10 +92,16 @@ class Encoder(nn.Module):
         x = self.pos(x)
         h = self.encoder(x, src_key_padding_mask=pad_mask)  # (B, T, d_model)
 
-        # Perceiver readout — M queries attend to T tokens.
-        # .expand gives a stride-0 broadcast view; LayerNorm has no WSE kernel for
-        # that, so materialize it with .contiguous() (repeat the queries per batch).
-        q = self.readout_queries.unsqueeze(0).expand(B, -1, -1).contiguous()  # (B, M, d_model)
+        # Perceiver readout — M learned queries cross-attend to encoded tokens.
+        # The queries must live on the activation path: the WSE streams samples
+        # through its tiles, and cstorch has no wafer LayerNorm kernel for a
+        # purely weight-derived tensor (the learned readout_queries alone, with
+        # no batch/data dependence). Seed them with the per-batch encoder summary
+        # so q is a genuine activation; readout_norm_q renormalizes each query, so
+        # this conditions (rather than corrupts) the queries.
+        # NOTE: this diverges from the pre-port readout — reproduce the frozen
+        # GB10 model with pre-port code (see PORT_CS3 §8).
+        q = self.readout_queries.unsqueeze(0) + h.mean(dim=1, keepdim=True)  # (B, M, d_model)
         q_norm = self.readout_norm_q(q)
         h_norm = self.readout_norm_kv(h)
         attn_out = self.readout_attn(
