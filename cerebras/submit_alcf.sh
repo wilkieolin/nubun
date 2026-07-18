@@ -44,6 +44,9 @@ case "$mode" in
   minprobe) # canonical MLP standalone loop — does ANY raw cstorch loop compile
             # on this cluster, or only cszoo fit? No data, nothing of ours.
     python cerebras/minimal_probe.py |& tee minprobe.log ;;
+  minprobe-raw) # same MLP, but raw-generator input (train_cstorch style).
+            # If minprobe works but this fails empty -> input pipeline is it.
+    python cerebras/minimal_probe.py --raw-input |& tee minprobe_raw.log ;;
   smoke)    # EXECUTE mode, synthetic data, tiny — isolates compile of OUR graph
             # from data + from --compile-only. No data/ files needed. This is the
             # exact M1 graph; if it compiles+executes, the empty-CIRH issue was
@@ -60,5 +63,5 @@ case "$mode" in
     python cerebras/train_cstorch.py --steps 100000 \
       --job-label name=nubun-m2 "${common[@]}" |& tee m2.log ;;
   *)
-    echo "usage: $0 {minprobe|smoke|compile|m1|m2}" >&2; exit 2 ;;
+    echo "usage: $0 {minprobe|minprobe-raw|smoke|compile|m1|m2}" >&2; exit 2 ;;
 esac

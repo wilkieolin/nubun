@@ -15,8 +15,15 @@ compiles+runs, the problem is specific to our model and we bisect that.
 
 Nothing here imports from vqvae/ — it depends only on cstorch + torch.
 
-Run via:  bash cerebras/submit_alcf.sh minprobe
+Run via:  bash cerebras/submit_alcf.sh minprobe        # real torch DataLoader
+          bash cerebras/submit_alcf.sh minprobe-raw    # raw generator (train_cstorch style)
+
+--raw-input swaps the proper torch DataLoader for a raw generator yielding
+PRE-BATCHED tuples — exactly how train_cstorch feeds data. Everything else stays
+identical (same MLP). If plain minprobe compiles but minprobe-raw fails empty,
+the input pipeline (raw generator vs torch DataLoader) is the culprit.
 """
+import argparse
 import os
 
 import torch
@@ -28,6 +35,12 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--raw-input", action="store_true",
+                    help="Feed a raw generator of pre-batched tuples (as "
+                         "train_cstorch does) instead of a torch DataLoader.")
+    args = ap.parse_args()
+
     class MLP(torch.nn.Module):
         def __init__(self):
             super().__init__()
@@ -51,7 +64,7 @@ def main():
     compiled_model = cstorch.compile(model, backend)
     optimizer = cstorch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
 
-    def input_fn():
+    def input_fn_dl():
         # A real torch DataLoader (as the canonical example uses), over a
         # synthetic in-memory dataset — no downloads, no data/ files.
         n = 640
@@ -60,6 +73,18 @@ def main():
         ds = torch.utils.data.TensorDataset(x, y)
         return torch.utils.data.DataLoader(ds, batch_size=64, shuffle=True)
 
+    def input_fn_raw():
+        # Raw generator yielding PRE-BATCHED tuples — exactly train_cstorch's
+        # style. The only thing that differs from input_fn_dl.
+        def gen():
+            for _ in range(7):
+                x = torch.randn(64, 1, 28, 28)
+                y = torch.randint(0, 10, (64,), dtype=torch.int32)
+                yield (x, y)
+        return gen()
+
+    input_fn = input_fn_raw if args.raw_input else input_fn_dl
+    print(f"minimal_probe: input = {'RAW generator' if args.raw_input else 'torch DataLoader'}")
     dataloader = cstorch.utils.data.DataLoader(input_fn)
     loss_fn = torch.nn.CrossEntropyLoss()
 
