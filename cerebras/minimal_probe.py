@@ -356,8 +356,14 @@ def run_vqvae(args):
     def training_step(batch):
         out = compiled_model(batch["src_ids"], batch["tgt_ids"], batch["tgt_lang_id"])
         logits = out["logits"]
-        recon = F.cross_entropy(logits.reshape(-1, logits.size(-1)),
-                                batch["tgt_ids"][:, 1:].reshape(-1), ignore_index=1)
+        # Explicit CE (log_softmax + gather) — the fused F.cross_entropy op does
+        # not lower on cstorch (wgth.cast placement error over the vocab dim).
+        l2d = logits.reshape(-1, logits.size(-1))
+        t1d = batch["tgt_ids"][:, 1:].reshape(-1)
+        logp = torch.log_softmax(l2d, dim=-1)
+        nll = -logp.gather(1, t1d.unsqueeze(1)).squeeze(1)
+        m = (t1d != 1).to(logp.dtype)
+        recon = (nll * m).sum() / m.sum().clamp(min=1.0)
         loss = recon + out["vq_losses"]["commit"] + out["vq_losses"]["codebook"]
         loss.backward()
         optimizer.step()

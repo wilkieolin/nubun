@@ -50,14 +50,19 @@ def build_model(args, emb):
 
 
 def weighted_ce(logits, targets, pad, token_weight):
-    """Token-weighted cross-entropy == vqvae.losses.reconstruction_loss."""
+    """Token-weighted cross-entropy == vqvae.losses.reconstruction_loss.
+
+    Computed with explicit log_softmax + gather rather than F.cross_entropy: the
+    fused cross_entropy op does not lower on cstorch (it forces a wgth.cast over
+    the vocab dim that the compiler cannot place). This form is numerically
+    equivalent and lowers cleanly."""
     l2d = logits.reshape(-1, logits.size(-1))
     t1d = targets.reshape(-1)
-    if token_weight is None:
-        return F.cross_entropy(l2d, t1d, ignore_index=pad)
-    ce = F.cross_entropy(l2d, t1d, ignore_index=pad, reduction="none")
-    w = token_weight[t1d] * (t1d != pad).to(logits.dtype)
-    return (ce * w).sum() / w.sum().clamp(min=1.0)
+    logp = torch.log_softmax(l2d, dim=-1)
+    nll = -logp.gather(1, t1d.unsqueeze(1)).squeeze(1)          # (N,)
+    mask = (t1d != pad).to(logp.dtype)                          # ignore pad targets
+    w = mask if token_weight is None else token_weight[t1d] * mask
+    return (nll * w).sum() / w.sum().clamp(min=1.0)
 
 
 def make_synthetic_input_fn(args, vocab):

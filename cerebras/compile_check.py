@@ -127,11 +127,14 @@ def main():
         out = compiled_model(src_ids, tgt_ids, tgt_lang_id)
         # reconstruction (plain CE here; swap in weighted CE to exercise that path)
         logits = out["logits"]
-        recon = F.cross_entropy(
-            logits.reshape(-1, logits.size(-1)),
-            tgt_ids[:, 1:].reshape(-1),
-            ignore_index=pad,
-        )
+        # Explicit CE (log_softmax + gather); fused F.cross_entropy does not
+        # lower on cstorch (wgth.cast placement error over the vocab dim).
+        l2d = logits.reshape(-1, logits.size(-1))
+        t1d = tgt_ids[:, 1:].reshape(-1)
+        logp = F.log_softmax(l2d, dim=-1)
+        nll = -logp.gather(1, t1d.unsqueeze(1)).squeeze(1)
+        m = (t1d != pad).to(logp.dtype)
+        recon = (nll * m).sum() / m.sum().clamp(min=1.0)
         loss = recon + out["vq_losses"]["commit"] + out["vq_losses"]["codebook"]
         if out["sem_pred"] is not None:
             cos = F.cosine_similarity(out["sem_pred"].float(), sem_target.float(), dim=-1)
