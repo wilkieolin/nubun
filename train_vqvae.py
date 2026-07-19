@@ -167,7 +167,13 @@ def main():
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--warmup-steps", type=int, default=500)
-    parser.add_argument("--lr-decay", choices=["none", "cosine"], default="none",
+    parser.add_argument("--wsd-decay-frac", type=float, default=0.4,
+                        help="Phase 8 A (WSD): fraction of total steps spent in the "
+                             "final cosine cooldown. LR holds at peak from warmup "
+                             "until (1-frac)*steps, then decays to lr-min-ratio. "
+                             "Keeps LR hot early (helps, per E3) but guarantees "
+                             "cooldown before the end (avoids E3's hot-tail collapse).")
+    parser.add_argument("--lr-decay", choices=["none", "cosine", "wsd"], default="none",
                         help="Phase 6: 'cosine' decays LR from peak to lr-min-ratio "
                              "after warmup (fixes long-run divergence from constant LR)")
     parser.add_argument("--lr-min-ratio", type=float, default=0.1,
@@ -477,6 +483,18 @@ def main():
             # (100k) horizons (VQ + unfrozen both crashed in the 2nd half); decay
             # to a floor keeps late training stable.
             progress = (step - args.warmup_steps) / max(1, args.steps - args.warmup_steps)
+            progress = min(1.0, progress)
+            return args.lr_min_ratio + 0.5 * (1 - args.lr_min_ratio) * \
+                (1 + math.cos(math.pi * progress))
+        if args.lr_decay == "wsd":
+            # Warmup-Stable-Decay: hold at peak (1.0) through the stable phase, then
+            # cosine-cool to lr_min_ratio over the final wsd_decay_frac of steps.
+            # E3 showed hotter LR early helps (0.435 > E2 0.417) but a hot tail
+            # collapsed the codebook; WSD keeps it hot then guarantees the cooldown.
+            decay_start = args.steps * (1.0 - args.wsd_decay_frac)
+            if step < decay_start:
+                return 1.0
+            progress = (step - decay_start) / max(1, args.steps - decay_start)
             progress = min(1.0, progress)
             return args.lr_min_ratio + 0.5 * (1 - args.lr_min_ratio) * \
                 (1 + math.cos(math.pi * progress))
