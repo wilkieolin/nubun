@@ -4,6 +4,7 @@ import math
 
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 from vqvae import cs_attention
 
@@ -118,6 +119,9 @@ class Decoder(nn.Module):
         )
         h = self.out_norm(h)
 
-        # Tied output projection
-        logits = h @ self.token_emb.weight.t() + self.out_bias  # (B, T, V)
+        # Tied output projection. F.linear(h, W, b) == h @ W.t() + b, but avoids
+        # an explicit .t() on the embedding weight — cstorch cannot transfer a
+        # transposed/sliced weight parameter to the WSE (same class as the QKV
+        # weight-split issue). Numerically identical.
+        logits = F.linear(h, self.token_emb.weight, self.out_bias)  # (B, T, V)
         return logits

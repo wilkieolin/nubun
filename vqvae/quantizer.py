@@ -65,10 +65,17 @@ class VectorQuantizer(nn.Module):
 
         z_sq = (flat ** 2).sum(dim=1, keepdim=True)
         e_sq = (self.codebook ** 2).sum(dim=1).unsqueeze(0)
-        dist = z_sq + e_sq - 2 * flat @ self.codebook.t()
+        # F.linear(flat, codebook) == flat @ codebook.t() without an explicit
+        # weight transpose (cstorch can't move a transposed weight to the WSE).
+        dist = z_sq + e_sq - 2 * F.linear(flat, self.codebook)
 
         indices = dist.argmin(dim=1)
-        z_q_flat = self.codebook[indices]
+        # One-hot selection/counts via arange compare: onehot @ codebook ==
+        # codebook[indices] (advanced-indexing a weight doesn't lower), and
+        # onehot.sum(0) is the usage count (bincount/F.one_hot don't lower).
+        onehot = (indices.reshape(-1, 1)
+                  == torch.arange(self.k, device=indices.device)).to(flat.dtype)
+        z_q_flat = onehot @ self.codebook
 
         commit_loss = (flat - z_q_flat.detach()).pow(2).mean()
         losses = {"commit": self.beta_commit * commit_loss}
@@ -78,13 +85,6 @@ class VectorQuantizer(nn.Module):
         # Straight-through estimator
         z_q_flat = flat + (z_q_flat - flat).detach()
 
-        # Usage counts per code, as a static-shape (k,) tensor. NOTE: neither
-        # bincount (data-dependent output size) NOR F.one_hot lowers on Cerebras
-        # cstorch — F.one_hot internally calls .item() for bounds-checking
-        # (aten::_local_scalar_dense). An arange broadcast-compare is pure
-        # static-shape ops and traces cleanly. Identical values on all backends.
-        onehot = (indices.reshape(-1, 1)
-                  == torch.arange(self.k, device=indices.device)).to(flat.dtype)
         usage = onehot.sum(dim=0)
 
         z_q = z_q_flat.view(B, M, D)
@@ -248,12 +248,22 @@ class ResidualVectorQuantizer(nn.Module):
         commit = flat.new_zeros(())
         codebook = flat.new_zeros(())
         idx0 = None
+        usage = None
+        ar = torch.arange(self.k, device=flat.device)
         for level, cb in enumerate(self.codebooks):
             r_sq = (residual ** 2).sum(dim=1, keepdim=True)
             e_sq = (cb ** 2).sum(dim=1).unsqueeze(0)
-            dist = r_sq + e_sq - 2 * residual @ cb.t()
+            # F.linear(residual, cb) == residual @ cb.t() without an explicit
+            # transpose of the codebook weight (cstorch can't move a transposed
+            # weight to the WSE).
+            dist = r_sq + e_sq - 2 * F.linear(residual, cb)
             idx = dist.argmin(dim=1)
-            zq = cb[idx]
+            # Select the code by one-hot matmul rather than advanced-indexing the
+            # codebook weight (cstorch can't gather weight rows to the WSE):
+            # onehot @ cb == cb[idx]. Static-shape one-hot via arange compare
+            # (F.one_hot / bincount don't lower). Reused for level-0 usage counts.
+            onehot = (idx.unsqueeze(1) == ar).to(flat.dtype)          # (N, k)
+            zq = onehot @ cb                                          # (N, d)
             # commit binds the residual to its code; codebook pulls the code to it
             commit = commit + (residual - zq.detach()).pow(2).mean()
             codebook = codebook + (zq - residual.detach()).pow(2).mean()
@@ -261,15 +271,11 @@ class ResidualVectorQuantizer(nn.Module):
             residual = residual - zq.detach()   # detach: encoder grad flows only via final STE
             if level == 0:
                 idx0 = idx
+                usage = onehot.sum(dim=0)                             # (k,)
 
         # Straight-through on the full multi-level sum
         z_q_flat = flat + (quantized - flat).detach()
         losses = {"commit": self.beta_commit * commit, "codebook": codebook}
-        # Static-shape usage counts. F.one_hot does NOT lower on cstorch (it calls
-        # .item() internally for bounds-checking); an arange broadcast-compare does.
-        onehot = (idx0.reshape(-1, 1)
-                  == torch.arange(self.k, device=idx0.device)).to(flat.dtype)
-        usage = onehot.sum(dim=0)
         return z_q_flat.view(B, M, D), idx0.view(B, M), losses, usage
 
     # --- compatibility shims (operate on level-0 indices; unused w/o stop-mask) ---
