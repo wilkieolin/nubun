@@ -55,8 +55,17 @@ class LayerNorm(nn.Module):
 
 
 class MultiheadAttention(nn.Module):
-    """Explicit-ops replacement for nn.MultiheadAttention (batch_first, packed
-    in_proj). Returns just the attention output (Nubun never uses the weights)."""
+    """Explicit-ops multi-head attention (batch_first). Returns just the output.
+
+    Uses SEPARATE q/k/v projections rather than the packed in_proj_weight of
+    nn.MultiheadAttention. A packed projection forces splitting q/k/v apart — via
+    a weight split (aten::split_copy, can't transfer to the WSE) or an activation
+    channel-slice (ws_km.slice → the slice_filter kernel asserts during size
+    estimation, crashing the compile). Separate projections avoid the split
+    entirely. NOTE: this makes the state_dict NOT compatible with
+    nn.MultiheadAttention (q_proj/k_proj/v_proj instead of in_proj_weight) — the
+    CS-3 model trains from scratch; reproduce the frozen GB10 model with pre-port
+    code (see PORT_CS3 §8)."""
 
     def __init__(self, embed_dim: int, num_heads: int, dropout: float = 0.0):
         super().__init__()
@@ -65,34 +74,19 @@ class MultiheadAttention(nn.Module):
         self.num_heads = num_heads
         self.head_dim = embed_dim // num_heads
         self.dropout = dropout
-        # Names/shapes match nn.MultiheadAttention exactly (packed QKV).
-        self.in_proj_weight = nn.Parameter(torch.empty(3 * embed_dim, embed_dim))
-        self.in_proj_bias = nn.Parameter(torch.empty(3 * embed_dim))
-        self.out_proj = nn.Linear(embed_dim, embed_dim)  # -> out_proj.{weight,bias}
-        self._reset_parameters()
-
-    def _reset_parameters(self):
-        nn.init.xavier_uniform_(self.in_proj_weight)
-        nn.init.zeros_(self.in_proj_bias)
-        nn.init.zeros_(self.out_proj.bias)
+        self.q_proj = nn.Linear(embed_dim, embed_dim)
+        self.k_proj = nn.Linear(embed_dim, embed_dim)
+        self.v_proj = nn.Linear(embed_dim, embed_dim)
+        self.out_proj = nn.Linear(embed_dim, embed_dim)
 
     def forward(self, query, key, value, key_padding_mask=None, attn_mask=None):
         """query (B,Lq,E), key/value (B,Lk,E).
         key_padding_mask (B,Lk) bool: True = ignore (pad).
         attn_mask (Lq,Lk) bool: True = disallowed (e.g. causal upper triangle)."""
         E, H, dh = self.embed_dim, self.num_heads, self.head_dim
-        # Project with the FULL packed in_proj, then slice the ACTIVATION outputs.
-        # Splitting the (3E,E) weight parameter emits aten::split_copy on a
-        # WGT_HOST tensor, which cstorch cannot transfer to the WSE; slicing the
-        # projected activation (on the WSE) is fine. F.linear(x, W)[..., :E] ==
-        # F.linear(x, W[:E]), so this is numerically identical to a QKV split.
-        if query is key and key is value:                 # self-attention
-            qkv = F.linear(query, self.in_proj_weight, self.in_proj_bias)
-            q, k, v = qkv[..., :E], qkv[..., E:2 * E], qkv[..., 2 * E:]
-        else:                                             # cross-attention
-            q = F.linear(query, self.in_proj_weight, self.in_proj_bias)[..., :E]
-            kv = F.linear(key, self.in_proj_weight, self.in_proj_bias)
-            k, v = kv[..., E:2 * E], kv[..., 2 * E:]
+        q = self.q_proj(query)
+        k = self.k_proj(key)
+        v = self.v_proj(value)
 
         B, Lq, _ = q.shape
         Lk = k.shape[1]
