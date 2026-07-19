@@ -10,7 +10,9 @@ from vqvae import cs_attention
 
 
 class SinusoidalPositionalEmbedding(nn.Module):
-    def __init__(self, d_model: int, max_len: int = 4096):
+    # max_len only needs to cover the training seq_len (<=64); kept small so the
+    # one-hot select matmul below stays cheap.
+    def __init__(self, d_model: int, max_len: int = 512):
         super().__init__()
         pe = torch.zeros(max_len, d_model)
         pos = torch.arange(max_len).unsqueeze(1).float()
@@ -18,16 +20,19 @@ class SinusoidalPositionalEmbedding(nn.Module):
                         (-math.log(10000.0) / d_model))
         pe[:, 0::2] = torch.sin(pos * div)
         pe[:, 1::2] = torch.cos(pos * div)
-        self.register_buffer("pe", pe.unsqueeze(0))
+        self.register_buffer("pe", pe, persistent=False)  # (max_len, d), constant
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Gather the first T rows with F.embedding rather than slicing the pe
-        # buffer: slicing a GlobalHost buffer emits ws_waf.slice, which cstorch
-        # cannot transfer to the WSE (same class as weight slicing). F.embedding
-        # is the lowering-friendly gather (same op as token_emb). Values are
-        # identical, and the (1, max_len, d) buffer shape is unchanged.
-        pos = torch.arange(x.size(1), device=x.device)
-        return x + F.embedding(pos, self.pe.squeeze(0)).unsqueeze(0)
+        # Select rows 0..T-1 of the pe table via a one-hot matmul. Alternatives
+        # both fail on the WSE: pe[:, :T] is a buffer slice (slice_filter kernel
+        # asserts), and F.embedding(arange, pe) streams the arange as an i64 index
+        # (act_host_to_wse) that has no valid layout. onehot @ pe == pe[:T], using
+        # arange only in a compare (the RVQ one-hot pattern that lowers) + a matmul.
+        T = x.size(1)
+        rows = torch.arange(T, device=x.device).unsqueeze(1)              # (T,1)
+        cols = torch.arange(self.pe.size(0), device=x.device).unsqueeze(0)  # (1,max_len)
+        onehot = (rows == cols).to(x.dtype)                              # (T,max_len)
+        return x + (onehot @ self.pe).unsqueeze(0)                       # (1,T,d) bcast
 
 
 class Decoder(nn.Module):
