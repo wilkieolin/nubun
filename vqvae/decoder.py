@@ -75,7 +75,7 @@ class Decoder(nn.Module):
             lambda: cs_attention.TransformerDecoderLayer(
                 d_model=d_model, nhead=n_heads, dim_feedforward=d_ff, dropout=dropout),
             num_layers=n_dec_layers)
-        self.out_norm = nn.LayerNorm(d_model)
+        self.out_norm = cs_attention.LayerNorm(d_model)  # explicit-ops LayerNorm
 
         # Output projection ties to embedding table (parameter sharing).
         # We keep a separate bias so the frozen emb table stays untouched.

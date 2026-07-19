@@ -32,6 +32,28 @@ from torch.nn import functional as F
 _MASK_NEG = -1e4
 
 
+class LayerNorm(nn.Module):
+    """Explicit-ops LayerNorm, weight-compatible with nn.LayerNorm (weight, bias).
+
+    cstorch's fused LayerNorm kernel fails to lower ("Failed to convert op to
+    WAF") when the tensor's non-batch dim is weight-shaped rather than a streamed
+    activation dim (e.g. the Perceiver readout's M learned-query slots). Computing
+    mean/var/normalize with primitive ops sidesteps the specialized kernel and is
+    numerically identical (biased variance, matching nn.LayerNorm)."""
+
+    def __init__(self, normalized_shape, eps: float = 1e-5):
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(normalized_shape))
+        self.bias = nn.Parameter(torch.zeros(normalized_shape))
+        self.eps = eps
+
+    def forward(self, x):
+        mu = x.mean(dim=-1, keepdim=True)
+        centered = x - mu
+        var = centered.pow(2).mean(dim=-1, keepdim=True)
+        return centered * torch.rsqrt(var + self.eps) * self.weight + self.bias
+
+
 class MultiheadAttention(nn.Module):
     """Explicit-ops replacement for nn.MultiheadAttention (batch_first, packed
     in_proj). Returns just the attention output (Nubun never uses the weights)."""
@@ -100,8 +122,8 @@ class TransformerEncoderLayer(nn.Module):
         self.self_attn = MultiheadAttention(d_model, nhead, dropout=dropout)
         self.linear1 = nn.Linear(d_model, dim_feedforward)
         self.linear2 = nn.Linear(dim_feedforward, d_model)
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
+        self.norm1 = LayerNorm(d_model)
+        self.norm2 = LayerNorm(d_model)
         self.dropout = dropout
 
     def forward(self, src, src_mask=None, src_key_padding_mask=None):
@@ -137,9 +159,9 @@ class TransformerDecoderLayer(nn.Module):
         self.multihead_attn = MultiheadAttention(d_model, nhead, dropout=dropout)
         self.linear1 = nn.Linear(d_model, dim_feedforward)
         self.linear2 = nn.Linear(dim_feedforward, d_model)
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
-        self.norm3 = nn.LayerNorm(d_model)
+        self.norm1 = LayerNorm(d_model)
+        self.norm2 = LayerNorm(d_model)
+        self.norm3 = LayerNorm(d_model)
         self.dropout = dropout
 
     def forward(self, tgt, memory, tgt_mask=None, tgt_key_padding_mask=None,

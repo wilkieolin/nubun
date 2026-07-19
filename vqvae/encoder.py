@@ -79,10 +79,12 @@ class Encoder(nn.Module):
         self.readout_queries = nn.Parameter(torch.randn(m_max, d_model) * 0.02)
         self.readout_attn = cs_attention.MultiheadAttention(
             d_model, n_heads, dropout=dropout)
-        self.readout_norm_q = nn.LayerNorm(d_model)
-        self.readout_norm_kv = nn.LayerNorm(d_model)
+        # cs_attention.LayerNorm: explicit-ops LayerNorm — cstorch's fused kernel
+        # fails on the readout's M (learned-query) dimension (see cs_attention.py).
+        self.readout_norm_q = cs_attention.LayerNorm(d_model)
+        self.readout_norm_kv = cs_attention.LayerNorm(d_model)
         self.readout_ff = nn.Sequential(
-            nn.LayerNorm(d_model),
+            cs_attention.LayerNorm(d_model),
             nn.Linear(d_model, d_ff),
             nn.GELU(),
             nn.Linear(d_ff, d_model),
