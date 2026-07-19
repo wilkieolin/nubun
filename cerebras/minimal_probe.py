@@ -344,9 +344,13 @@ def run_vqvae(args):
     def input_fn():
         def gen():
             for _ in range(7):
+                # Host-side AR shift: yield dec_in and labels pre-shifted so the
+                # graph never slices (cstorch's slice_filter kernel asserts).
+                tgt = torch.randint(4, vocab, (B, T + 1))
                 yield {
                     "src_ids": torch.randint(4, vocab, (B, T)),
-                    "tgt_ids": torch.randint(4, vocab, (B, T)),
+                    "dec_in": tgt[:, :-1].contiguous(),   # (B, T)
+                    "labels": tgt[:, 1:].contiguous(),    # (B, T)
                     "tgt_lang_id": torch.randint(0, n_langs, (B,)),
                 }
         return gen()
@@ -354,12 +358,13 @@ def run_vqvae(args):
 
     @cstorch.trace
     def training_step(batch):
-        out = compiled_model(batch["src_ids"], batch["tgt_ids"], batch["tgt_lang_id"])
+        out = compiled_model(batch["src_ids"], batch["dec_in"], batch["tgt_lang_id"],
+                             pre_shifted=True)
         logits = out["logits"]
         # Explicit CE (log_softmax + gather) — the fused F.cross_entropy op does
         # not lower on cstorch (wgth.cast placement error over the vocab dim).
         l2d = logits.reshape(-1, logits.size(-1))
-        t1d = batch["tgt_ids"][:, 1:].reshape(-1)
+        t1d = batch["labels"].reshape(-1)
         logp = torch.log_softmax(l2d, dim=-1)
         nll = -logp.gather(1, t1d.unsqueeze(1)).squeeze(1)
         m = (t1d != 1).to(logp.dtype)

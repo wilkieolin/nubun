@@ -113,10 +113,17 @@ class VQVAE(nn.Module):
         target_len: torch.Tensor | None = None,
         word_dropout: float = 0.0,
         mask_token_id: int = 3,
+        pre_shifted: bool = False,
     ) -> dict:
         """If target_len is provided (per-example, B-shaped), positions
         >= target_len[i] are forced to <stop> after quantization. Used
-        with the M2 hard length cap."""
+        with the M2 hard length cap.
+
+        pre_shifted=True: `tgt_ids` is ALREADY the decoder input (the shifted
+        tgt[:-1]), supplied by the data pipeline, so the model does not slice it.
+        This is required on the CS-3 — cstorch's slice_filter kernel asserts on
+        any in-graph ws_km.slice — where the AR teacher-forcing shift is done on
+        the host and the caller compares logits to a separate labels tensor."""
         z_e = self.encoder(src_ids)
         if self.no_vq:
             # Phase 6 B1 upper bound: continuous bottleneck, no quantization, no
@@ -177,7 +184,7 @@ class VQVAE(nn.Module):
             # Phase 5c: word dropout — randomly replace teacher-forced decoder input
             # tokens with <unk> so the decoder can't lean on the gold prefix and must
             # read the codes (directly attacks the measured posterior collapse).
-            dec_in = tgt_ids[:, :-1]
+            dec_in = tgt_ids if pre_shifted else tgt_ids[:, :-1]
             if self.training and word_dropout > 0.0:
                 drop = (torch.rand_like(dec_in, dtype=torch.float) < word_dropout) & \
                        (dec_in != self.pad_token_id)
