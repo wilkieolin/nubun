@@ -2,7 +2,10 @@
 
 Read this if you're picking up the Nubun VQ-VAE on an x86 box with the
 `cerebras-pytorch` wheel and no prior context. Companion: `PHASE8.md` (how the
-frozen model was built and why), `cerebras/` (the port scaffold).
+frozen model was built and why), `cerebras/` (the port scaffold), and
+**`cerebras/CS3_BRINGUP.md`** — the live wafer bring-up log: the on-cluster
+debugging loop, the cstorch op-rewrite rules we've discovered, and the current
+compile status. If you're on the ALCF node continuing the compile, start there.
 
 ## 1. What Nubun is (30 seconds)
 
