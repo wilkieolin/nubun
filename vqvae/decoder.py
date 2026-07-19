@@ -92,16 +92,17 @@ class Decoder(nn.Module):
         B, T = target_ids.shape
         device = target_ids.device
 
-        # Project bottleneck to d_model; prepend learned lang tag at memory position 0
+        # Project bottleneck to d_model and ADD the learned lang tag to every
+        # memory slot (broadcast) instead of prepending it as a separate slot.
+        # The old torch.cat([lang_token, mem]) was fine forward, but its BACKWARD
+        # slices the (B, M+1, d) grad back into (B,1,d)+(B,M,d) — ws_km.slice on a
+        # float/lane tensor, which the slice_filter kernel asserts on during size
+        # estimation (crashing the compile). Broadcast-add carries the same lang
+        # conditioning with no concat/slice. Memory length is now M (no lang slot).
         mem = self.bottleneck_proj(bottleneck)              # (B, M, d_model)
-        lang_token = self.lang_emb(lang_id).unsqueeze(1)    # (B, 1, d_model)
-        mem = torch.cat([lang_token, mem], dim=1)           # (B, M+1, d_model)
-        # Lang token is always valid; bottleneck_mask appended after. cstorch's
-        # concat rejects bool (i1) tensors ("integer dtype must be i32 or i16"),
-        # so build validity in int32 and derive the pad mask by comparison.
-        lang_valid = torch.ones(B, 1, dtype=torch.int32, device=device)
-        mem_valid = torch.cat([lang_valid, bottleneck_mask.to(torch.int32)], dim=1)  # (B, M+1)
-        mem_pad_mask = mem_valid == 0                                # True = pad
+        lang = self.lang_emb(lang_id).unsqueeze(1)          # (B, 1, d_model)
+        mem = mem + lang                                    # (B, M, d_model)
+        mem_pad_mask = bottleneck_mask.to(torch.int32) == 0  # (B, M) True = pad
 
         # Decoder input: token embeddings + positional
         tgt_emb = self.token_emb(target_ids)
