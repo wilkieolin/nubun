@@ -249,7 +249,10 @@ class ResidualVectorQuantizer(nn.Module):
         codebook = flat.new_zeros(())
         idx0 = None
         usage = None
-        ar = torch.arange(self.k, device=flat.device)
+        # float, not int64: this arange feeds the code-selection compare, and any
+        # i64 tensor that has to move on-wafer aborts the CS-3 compiler
+        # (get_mov_simd_width asserts num_bits == 16 || 32).
+        ar_f = torch.arange(self.k, device=flat.device, dtype=flat.dtype)
         for level, cb in enumerate(self.codebooks):
             r_sq = (residual ** 2).sum(dim=1, keepdim=True)
             e_sq = (cb ** 2).sum(dim=1).unsqueeze(0)
@@ -257,12 +260,20 @@ class ResidualVectorQuantizer(nn.Module):
             # transpose of the codebook weight (cstorch can't move a transposed
             # weight to the WSE).
             dist = r_sq + e_sq - 2 * F.linear(residual, cb)
-            idx = dist.argmin(dim=1)
             # Select the code by one-hot matmul rather than advanced-indexing the
             # codebook weight (cstorch can't gather weight rows to the WSE):
-            # onehot @ cb == cb[idx]. Static-shape one-hot via arange compare
-            # (F.one_hot / bincount don't lower). Reused for level-0 usage counts.
-            onehot = (idx.unsqueeze(1) == ar).to(flat.dtype)          # (N, k)
+            # onehot @ cb == cb[idx]. The one-hot is derived from the FLOAT
+            # distances, not from argmin: argmin yields int64 indices, and an i64
+            # compare against arange materializes an (N, k) 64-bit tensor that
+            # the wafer cannot move. amin (not min(dim=)) because min(dim=) also
+            # emits an i64 indices output that survives into the graph.
+            # Identical to argmin when the row min is unique; on an exact tie the
+            # normalization splits the assignment across the tied codes instead
+            # of argmin's lowest-index-wins (reachable under codebook collapse,
+            # where duplicate/dead codes give exactly equal distances).
+            dmin = dist.amin(dim=1, keepdim=True)                     # (N, 1)
+            onehot = (dist == dmin).to(flat.dtype)                    # (N, k)
+            onehot = onehot / onehot.sum(dim=1, keepdim=True).clamp(min=1.0)
             zq = onehot @ cb                                          # (N, d)
             # commit binds the residual to its code; codebook pulls the code to it
             commit = commit + (residual - zq.detach()).pow(2).mean()
@@ -270,7 +281,10 @@ class ResidualVectorQuantizer(nn.Module):
             quantized = quantized + zq
             residual = residual - zq.detach()   # detach: encoder grad flows only via final STE
             if level == 0:
-                idx0 = idx
+                # Float codes: (onehot * ar_f).sum(1) == the selected index, with
+                # no i64 anywhere. Callers that need integer codes cast on the
+                # host (idx0.round().to(torch.int64)).
+                idx0 = (onehot * ar_f).sum(dim=1)                     # (N,) float
                 usage = onehot.sum(dim=0)                             # (k,)
 
         # Straight-through on the full multi-level sum

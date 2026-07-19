@@ -10,8 +10,25 @@ from vqvae import cs_attention
 
 
 class SinusoidalPositionalEmbedding(nn.Module):
-    # max_len only needs to cover the training seq_len (<=64); kept small so the
-    # one-hot select matmul below stays cheap.
+    """Adds sinusoidal positions to (B, T, d).
+
+    On the CS-3 the table must be sized EXACTLY to T, because every way of
+    selecting rows 0..T-1 in-graph fails:
+      - `pe[:T]`                  → ws_km.slice, and slice_filter asserts on it
+      - `F.embedding(arange, pe)` → streams an i64 index, "no valid layouts"
+      - `onehot @ pe`             → matmul with BOTH operands constant, so the
+        compiler places it on GlobalHost, where there is no matmul kernel
+        ("Failed to convert op to WAF"). Same data-independent-subgraph trap as
+        the readout LayerNorm.
+    With max_len == T the whole select collapses to a broadcast-add against a
+    streamed activation, which places on the WSE.
+
+    Off-wafer (GB10/CPU) T may be shorter than the table; the slice path below is
+    numerically identical and is only ever reached there. The branch is on a
+    Python int (shapes are static under trace), so it resolves at trace time and
+    the slice never enters the CS-3 graph.
+    """
+
     def __init__(self, d_model: int, max_len: int = 512):
         super().__init__()
         pe = torch.zeros(max_len, d_model)
@@ -23,16 +40,12 @@ class SinusoidalPositionalEmbedding(nn.Module):
         self.register_buffer("pe", pe, persistent=False)  # (max_len, d), constant
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Select rows 0..T-1 of the pe table via a one-hot matmul. Alternatives
-        # both fail on the WSE: pe[:, :T] is a buffer slice (slice_filter kernel
-        # asserts), and F.embedding(arange, pe) streams the arange as an i64 index
-        # (act_host_to_wse) that has no valid layout. onehot @ pe == pe[:T], using
-        # arange only in a compare (the RVQ one-hot pattern that lowers) + a matmul.
         T = x.size(1)
-        rows = torch.arange(T, device=x.device).unsqueeze(1)              # (T,1)
-        cols = torch.arange(self.pe.size(0), device=x.device).unsqueeze(0)  # (1,max_len)
-        onehot = (rows == cols).to(x.dtype)                              # (T,max_len)
-        return x + (onehot @ self.pe).unsqueeze(0)                       # (1,T,d) bcast
+        assert T <= self.pe.size(0), \
+            f"seq_len {T} exceeds positional table {self.pe.size(0)}"
+        if T == self.pe.size(0):
+            return x + self.pe.unsqueeze(0)      # (1,T,d) bcast — the WSE path
+        return x + self.pe[:T].unsqueeze(0)      # off-wafer only (in-graph slice)
 
 
 class Encoder(nn.Module):
@@ -58,6 +71,7 @@ class Encoder(nn.Module):
         dropout: float = 0.1,
         pad_token_id: int = 1,
         embedding_table: torch.Tensor | None = None,
+        seq_len: int | None = None,
     ):
         super().__init__()
         self.pad_token_id = pad_token_id
@@ -70,7 +84,10 @@ class Encoder(nn.Module):
                 f"embedding_table shape {embedding_table.shape} != ({vocab_size}, {d_model})"
             self.token_emb.weight.data.copy_(embedding_table)
             self.token_emb.weight.requires_grad = False  # frozen
-        self.pos = SinusoidalPositionalEmbedding(d_model)
+        # seq_len sizes the positional table exactly to T, which is what keeps the
+        # position add on the wafer (see SinusoidalPositionalEmbedding). Required
+        # for CS-3; leave None off-wafer to allow variable-length input.
+        self.pos = SinusoidalPositionalEmbedding(d_model, max_len=seq_len or 512)
 
         # cs_attention: explicit-ops, cstorch-compatible, weight-compatible with
         # nn.TransformerEncoder(nn.TransformerEncoderLayer(norm_first, gelu)).

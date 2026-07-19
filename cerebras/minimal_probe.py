@@ -329,6 +329,8 @@ def run_vqvae(args):
         beta_commit=0.25, pad_token_id=1, embedding_table=emb,
         use_semantic_head=False, use_rvq=not args.no_rvq, n_rvq_levels=4,
         decoder_type="ar", tie_embeddings=not args.no_tie,
+        # Exact positional-table sizes: src_ids and dec_in are both (B, T) here.
+        src_len=T, tgt_len=T,
     )
     model.train()
     print(f"minimal_probe: model=vqvae rvq={not args.no_rvq} tie={not args.no_tie}")
@@ -348,10 +350,26 @@ def run_vqvae(args):
                 # graph never slices (cstorch's slice_filter kernel asserts).
                 tgt = torch.randint(4, vocab, (B, T + 1))
                 yield {
-                    "src_ids": torch.randint(4, vocab, (B, T)),
-                    "dec_in": tgt[:, :-1].contiguous(),   # (B, T)
-                    "labels": tgt[:, 1:].contiguous(),    # (B, T)
-                    "tgt_lang_id": torch.randint(0, n_langs, (B,)),
+                    # int32, never int64. These ids feed BOTH the embedding
+                    # lookup (which lowers to ws_km.onehot and would tolerate
+                    # i64) and the pad-mask compare `ids == pad_token_id`, which
+                    # needs the raw ids on-wafer — and the wafer has no 64-bit
+                    # datapath. F.embedding accepts int32 indices, so this costs
+                    # nothing. The embedding path masks the compare path, so the
+                    # i64 only surfaces once other i64 tensors are removed.
+                    "src_ids": torch.randint(4, vocab, (B, T), dtype=torch.int32),
+                    "dec_in": tgt[:, :-1].contiguous().to(torch.int32),
+                    # Labels arrive ALREADY ONE-HOT as a float activation, not as
+                    # ids. Selecting the target logit on-wafer needs either a
+                    # gather (i64 index -> no valid layout) or a compare against
+                    # arange (materializes an (N,V) i64/i32 tensor plus a large
+                    # fan of intermediates through the backward -> did not fit in
+                    # memory). Doing it host-side makes the CE a plain multiply.
+                    # The pad mask comes over too: deriving it on-wafer as
+                    # onehot[:, pad_id] would be a slice, and slice_filter asserts.
+                    "labels_onehot": F.one_hot(tgt[:, 1:], vocab).to(torch.float16),
+                    "label_mask": (tgt[:, 1:] != 1).to(torch.float16),
+                    "tgt_lang_id": torch.randint(0, n_langs, (B,), dtype=torch.int32),
                 }
         return gen()
     dataloader = cstorch.utils.data.DataLoader(input_fn)
@@ -361,13 +379,16 @@ def run_vqvae(args):
         out = compiled_model(batch["src_ids"], batch["dec_in"], batch["tgt_lang_id"],
                              pre_shifted=True)
         logits = out["logits"]
-        # Explicit CE (log_softmax + gather) — the fused F.cross_entropy op does
-        # not lower on cstorch (wgth.cast placement error over the vocab dim).
+        # Explicit CE — the fused F.cross_entropy op does not lower on cstorch
+        # (wgth.cast placement error over the vocab dim). With the labels already
+        # one-hot from the host (see input_fn), picking out the target logit is
+        # just a multiply-and-sum: no gather, no compare, no integer tensor ever
+        # reaches the wafer.
         l2d = logits.reshape(-1, logits.size(-1))
-        t1d = batch["labels"].reshape(-1)
+        oh2d = batch["labels_onehot"].reshape(-1, logits.size(-1)).to(l2d.dtype)
         logp = torch.log_softmax(l2d, dim=-1)
-        nll = -logp.gather(1, t1d.unsqueeze(1)).squeeze(1)
-        m = (t1d != 1).to(logp.dtype)
+        nll = -(logp * oh2d).sum(dim=1)
+        m = batch["label_mask"].reshape(-1).to(logp.dtype)
         recon = (nll * m).sum() / m.sum().clamp(min=1.0)
         loss = recon + out["vq_losses"]["commit"] + out["vq_losses"]["codebook"]
         loss.backward()

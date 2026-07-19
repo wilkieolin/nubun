@@ -40,6 +40,13 @@ class VQVAE(nn.Module):
         use_rvq: bool = False,            # Phase 7: residual VQ (n_rvq_levels codes/slot)
         n_rvq_levels: int = 4,
         tie_embeddings: bool = False,     # Phase 8 E1: share enc/dec token_emb (one XLM-R table)
+        # Phase 8 CS-3: exact sequence lengths. Sizing the positional tables to
+        # exactly T keeps the position add on the wafer — any in-graph row select
+        # fails to lower (see SinusoidalPositionalEmbedding). src_len = encoder
+        # input T; tgt_len = DECODER INPUT T (tgt-1 under pre_shifted), defaults
+        # to src_len. Leave both None off-wafer for variable-length input.
+        src_len: int | None = None,
+        tgt_len: int | None = None,
     ):
         super().__init__()
         self.use_stop_mask = use_stop_mask
@@ -54,7 +61,7 @@ class VQVAE(nn.Module):
             vocab_size=vocab_size, d_model=d_model, d_code=d_code,
             n_enc_layers=n_enc_layers, n_heads=n_heads, d_ff=d_ff,
             m_max=m_max, dropout=dropout, pad_token_id=pad_token_id,
-            embedding_table=embedding_table,
+            embedding_table=embedding_table, seq_len=src_len,
         )
         if use_rvq:
             self.quantizer = ResidualVectorQuantizer(
@@ -76,7 +83,7 @@ class VQVAE(nn.Module):
                 vocab_size=vocab_size, n_langs=n_langs, d_model=d_model,
                 d_code=d_code, n_dec_layers=n_dec_layers, n_heads=n_heads,
                 d_ff=d_ff, dropout=dropout, pad_token_id=pad_token_id,
-                embedding_table=embedding_table,
+                embedding_table=embedding_table, seq_len=tgt_len or src_len,
             )
         # Phase 8 E1: tie encoder and decoder input embeddings to a single table.
         # The two separate XLM-R copies (~96M each) dominated trainable params;
