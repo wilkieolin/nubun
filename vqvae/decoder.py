@@ -21,7 +21,13 @@ class SinusoidalPositionalEmbedding(nn.Module):
         self.register_buffer("pe", pe.unsqueeze(0))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x + self.pe[:, : x.size(1)]
+        # Gather the first T rows with F.embedding rather than slicing the pe
+        # buffer: slicing a GlobalHost buffer emits ws_waf.slice, which cstorch
+        # cannot transfer to the WSE (same class as weight slicing). F.embedding
+        # is the lowering-friendly gather (same op as token_emb). Values are
+        # identical, and the (1, max_len, d) buffer shape is unchanged.
+        pos = torch.arange(x.size(1), device=x.device)
+        return x + F.embedding(pos, self.pe.squeeze(0)).unsqueeze(0)
 
 
 class Decoder(nn.Module):
