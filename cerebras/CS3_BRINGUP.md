@@ -353,7 +353,7 @@ execute path is ClockSync-blocked (§3 non-issues). `m1`/`m2` = training milesto
 ## 8. Commit trail (Phase 8 CS-3 bring-up), newest first
 
 ```
-a84d3ff real path: lookup CE + no output bias — smoke COMPILES at real dims
+377aab7 real path: lookup CE + no output bias — smoke COMPILES at real dims
         (decoder returns (logits,h), out_bias dropped; weighted_ce = frozen-emb
          lookup + detached-max logsumexp; opus/compile_check int32 + host shift;
          Class D: raw gather index, no trainable per-vocab table). Execute gated
