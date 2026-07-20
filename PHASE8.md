@@ -98,3 +98,34 @@ embedding). This is compute-heavy, which motivates the **CS-3 port** (see
 SRAM-resident on the wafer, and the custom RVQ traces cleanly under `cstorch`
 (argmin/gather/detach in a static unrolled loop) — the port lift is the
 training-loop idiom, not the ops.
+
+## Update — B (d_model decouple) result: width raises the ceiling
+
+After freezing E3@100k (0.435), two follow-ups on the `gb10-scaleup` branch:
+
+- **A (WSD schedule): failed, informative.** Holding LR flat at peak 3e-4 for
+  50k steps diverged at ~55–60k (decoder/recon blowup; codebook stayed intact).
+  Flat-at-peak is more destabilizing than E2/E3's always-decaying cosine at the
+  same peak. Conclusion: the schedule lever is tapped — E3's gently-decaying
+  cosine is the optimum.
+- **B (d_model 384→512): the win.** Round-trip real cross = **0.469** — beats
+  E3@100k (0.435) by +0.034 and, decisively, **exceeds the d_model-384
+  continuous ceiling (0.430)**. A quantized wider model beating the narrower
+  *continuous* ceiling proves widening d_model raised the continuous ceiling
+  itself; unlike decoder depth (E1, +0.01, didn't transfer), width transfers to
+  free generation. shuffle-gap +0.421 (strongest of any run). 54.5% of gold.
+
+Leaderboard (same seeded 200-sentence split, real cross):
+
+| model | real cross |
+|-------|-----------|
+| gold (translation ceiling) | 0.861 |
+| **B — d_model 512, RVQ8, tied, deep** | **0.469** |
+| E3 @ 100k — d_model 384 | 0.435 |
+| continuous ceiling — d_model 384 | 0.430 |
+| E2 — d_model 384 | 0.417 |
+
+Frozen-winner candidate: `data/phase8_B_dmodel512_100k_step100000.pt` (155.4M).
+Next width/schedule levers: B used E2's baseline cosine-100k (not E3's gentler
+schedule), so width+gentle-schedule may add more; and d_model 768 tests whether
+width keeps paying.
