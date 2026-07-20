@@ -44,7 +44,8 @@ def main():
                          "train_cstorch warmup(from 0)+cosine schedule, stepped "
                          "in-loop. Tests whether LR=0 on the compiled first step "
                          "zeros the weight updates and empties the graph.")
-    ap.add_argument("--model", choices=["mlp", "attn", "attn2", "vqvae"], default="mlp",
+    ap.add_argument("--model", choices=["mlp", "attn", "attn2", "vqvae", "cehead"],
+                    default="mlp",
                     help="mlp = canonical net. attn = bare nn.TransformerEncoder "
                          "(torch's fused attention). attn2 = SAME shape but a "
                          "hand-written attention (explicit Q/K/V + softmax(QKt)V, "
@@ -53,10 +54,32 @@ def main():
                     help="vqvae only: use plain VQ instead of residual VQ.")
     ap.add_argument("--no-tie", action="store_true",
                     help="vqvae only: untie enc/dec/output embeddings.")
+    # Capacity probing at REAL dims. The full-vocab logits tensor is
+    # (B, T, V) = (32, 63, 250037) ~= 1 GB in f16 regardless of how the CE is
+    # computed, so whether it fits at all is a prior question to the CE design.
+    ap.add_argument("--vocab", type=int, default=512,
+                    help="vqvae only: vocab size (real model: 250037).")
+    ap.add_argument("--batch-size", type=int, default=8,
+                    help="vqvae only: batch size (real model: 32).")
+    ap.add_argument("--seq-len", type=int, default=16,
+                    help="vqvae only: sequence length (real model: 64).")
+    ap.add_argument("--loss", choices=["ce", "logsumexp"], default="ce",
+                    help="vqvae only. ce = full cross-entropy via a host-side "
+                         "one-hot (only viable at small vocab: the one-hot is "
+                         "B*T*V*2 bytes/step, ~1 GB at the real vocab). "
+                         "logsumexp = loss is logits.logsumexp(-1).mean(), which "
+                         "needs no labels at all — it exercises the full-vocab "
+                         "logits tensor and its backward through the tied output "
+                         "projection, and nothing else. Use it to ask 'do the "
+                         "logits fit?' without entangling the CE design.")
+    ap.add_argument("--compile-only", action="store_true",
+                    help="Compile without executing — cheap capacity probing.")
     args = ap.parse_args()
 
     if args.model == "vqvae":
         return run_vqvae(args)
+    if args.model == "cehead":
+        return run_cehead(args)
     if args.model == "attn":
         return run_attn(args)
     if args.model == "attn2":
@@ -312,6 +335,142 @@ def run_attn2(args):
     print("minimal_probe: DONE — manual attention compiled and executed.")
 
 
+def run_cehead(args):
+    """Probe ONLY the output head + CE for the real (full-vocab) path.
+
+    Does NOT build the VQVAE — `h` comes from the dataloader as a random float
+    activation, so this isolates the three primitives the real CE needs and
+    nothing else:
+
+      1. token_emb(labels)  — (V,d) embedding lookup by int32 id, giving
+         emb[label] for the target-logit term.
+      2. logsumexp with a DETACHED max (torch.logsumexp does not lower).
+      3. token_weight and the pad mask arriving from the HOST as float (B,T)
+         activations rather than as wafer-side tables.
+
+    THE FORWARD INDEX MUST BE A RAW DATALOADER TENSOR. Every F.embedding lowers
+    to a cirh.Gather, which a peephole rewrites to `ws_km.onehot(input) @ weight`
+    ONLY when the index operand is a load_input. In the working graph the ws_km
+    op is literally `ws_km.onehot %input_N {depth=250037}` with zero gathers
+    surviving. Any op on the index first (labels.reshape(N), a cast, arithmetic)
+    breaks the match; the gather stays `acth.gather` on the weight and fails
+    "Unable to insert transfer WGT_HOST->ACT_HOST". So: look up with the raw
+    tensor, reshape the RESULT. Width and rank are irrelevant — earlier failures
+    at (V,1)/(V,8)/(V,384) were all this one bug.
+
+    THE TABLE MUST BE FROZEN. A frozen embedding's lookup has a no-op backward. A
+    TRAINABLE one's backward is a ScatterNd into the weight, which has no WAF
+    kernel. token_emb is the frozen XLM-R table, so it is fine. This is why there
+    is NO output bias: a trainable per-vocab bias scatters at any width, and it
+    cannot be folded into the frozen token_emb (partial-freeze = slice, Class B).
+    Reading the target logit out of the full logits instead — (onehot*logits) —
+    avoids the scatter but needs a second (N,V) tensor beside logits, and the two
+    do not co-fit at real dims ("did not fit in memory"). So the bias is dropped;
+    a tied softmax without an output bias is standard.
+
+    Cost: the rewrite materializes a tensor<...x250037xf16> one-hot on the
+    wafer, ~1 GB, but it fits (this probe reaches micro-batch 16). What the
+    lookup CE saves is ~1 GB/step of HOST->wafer bandwidth vs shipping a
+    host-built one-hot.
+
+    CE identity (exact, not an approximation): with a tied projection and no
+    output bias, logits[i,label] == h[i]·emb[label], so
+        nll = logsumexp(logits) - h·emb[label]
+    with no (N,V) intermediate besides logits itself. Verified vs a plain gather
+    CE on CPU (§4): CE diff 0.0, grads ~1e-9.
+    """
+    V, d, T, B = args.vocab, 384, args.seq_len, args.batch_size
+    print(f"minimal_probe: model=cehead vocab={V} d={d} B={B} T={T} "
+          f"compile_only={args.compile_only}")
+    print(f"minimal_probe: logits will be ({B}, {T}, {V}) = "
+          f"{B*T*V*2/2**30:.3f} GiB in f16")
+
+    class CEHead(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.token_emb = torch.nn.Embedding(V, d)
+            self.token_emb.weight.requires_grad = False   # frozen, like the real model
+            # Something trainable must remain, or there is no backward at all
+            # and the step DCEs to an empty module.
+            self.proj = torch.nn.Linear(d, d)
+
+        def forward(self, h, labels, tok_w, mask):
+            N = h.size(0) * h.size(1)
+            h2d = self.proj(h.reshape(N, -1))
+            logits = F.linear(h2d, self.token_emb.weight)          # (N, V)
+            # logsumexp with a DETACHED max — torch.logsumexp backprops through
+            # amax, whose grad is (x==max)/mask.sum(dim): an ADD-reduce over i1,
+            # and ReduceOp only supports f16/f32/bf16/cb16.
+            x = logits.float()
+            mx = x.amax(dim=-1, keepdim=True).detach()
+            lse = mx.squeeze(-1) + torch.log(torch.exp(x - mx).sum(dim=-1))
+            # Target logit by LOOKUP on the RAW `labels` input, then reshape the
+            # RESULT. The gather->onehot rewrite is a peephole match on
+            # Gather(weight, load_input): in the working graph the ws_km op is
+            # literally `ws_km.onehot %input_N {depth=250037}`, zero gathers
+            # surviving. Reshaping labels BEFORE the lookup breaks the match and
+            # leaves an acth.gather that cannot be placed. token_emb is frozen so
+            # its lookup backward is a no-op; a TRAINABLE embedding would instead
+            # emit a ScatterNd into the weight (no WAF kernel) — which is why the
+            # output bias cannot be a trainable per-vocab table and is dropped.
+            emb_t = self.token_emb(labels).reshape(N, -1)          # (N, d)
+            logit_t = (h2d * emb_t).sum(dim=-1)
+            nll = lse - logit_t.float()
+            # token weight comes from the HOST (frozen constant, host knows the
+            # labels) — no wafer-side (V,1) table.
+            w = tok_w.reshape(N).float() * mask.reshape(N).float()
+            return (nll * w).sum() / w.sum().clamp(min=1.0)
+
+    model = CEHead()
+    model.train()
+
+    cluster_config = cstorch.distributed.ClusterConfig(
+        num_csx=1, job_labels=["name=minprobe-cehead"], job_time_sec=3600,
+        mount_dirs=[REPO_ROOT], python_paths=[REPO_ROOT],
+    )
+    backend = cstorch.backend("CSX", compile_only=args.compile_only,
+                              cluster_config=cluster_config)
+    compiled_model = cstorch.compile(model, backend)
+    optimizer = cstorch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
+
+    # Frozen per-token weights, as in the real pipeline. Looked up HOST-side.
+    token_weight = torch.rand(V) + 0.5
+
+    def input_fn():
+        def gen():
+            for _ in range(7):
+                lab = torch.randint(4, V, (B, T))
+                yield {
+                    "h": torch.randn(B, T, d),
+                    "labels": lab.to(torch.int32),      # int32: no i64 on wafer
+                    "tok_w": token_weight[lab].to(torch.float16),   # host lookup
+                    "mask": (lab != 1).to(torch.float16),
+                }
+        return gen()
+    dataloader = cstorch.utils.data.DataLoader(input_fn)
+
+    @cstorch.trace
+    def training_step(batch):
+        loss = compiled_model(batch["h"], batch["labels"],
+                              batch["tok_w"], batch["mask"])
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+        return loss
+
+    @cstorch.step_closure
+    def fetch(step, loss):
+        print(f"step {step}: loss={loss.item():.4f}")
+
+    print("minimal_probe: starting CEHEAD loop...")
+    executor = cstorch.utils.data.DataExecutor(dataloader, num_steps=5)
+    step = 0
+    for batch in executor:
+        fetch(step, training_step(batch))
+        step += 1
+    print("minimal_probe: DONE — CEHEAD compiled.")
+
+
 def run_vqvae(args):
     """Run OUR VQVAE (small synthetic config) through the same known-good loop
     the MLP just passed. Isolates the model as the empty-CIRH cause and, via
@@ -321,7 +480,8 @@ def run_vqvae(args):
     sys.path.insert(0, REPO_ROOT)
     from vqvae.model import VQVAE
 
-    vocab, d_model, T, B, n_langs = 512, 128, 16, 8, 4
+    vocab, T, B = args.vocab, args.seq_len, args.batch_size
+    d_model, n_langs = 128, 4
     emb = torch.randn(vocab, d_model)
     model = VQVAE(
         vocab_size=vocab, n_langs=n_langs, d_model=d_model, d_code=64, k=32,
@@ -333,13 +493,18 @@ def run_vqvae(args):
         src_len=T, tgt_len=T,
     )
     model.train()
-    print(f"minimal_probe: model=vqvae rvq={not args.no_rvq} tie={not args.no_tie}")
+    print(f"minimal_probe: model=vqvae rvq={not args.no_rvq} tie={not args.no_tie} "
+          f"vocab={vocab} B={B} T={T} loss={args.loss} "
+          f"compile_only={args.compile_only}")
+    print(f"minimal_probe: logits will be ({B}, {T}, {vocab}) = "
+          f"{B*T*vocab*2/2**30:.3f} GiB in f16")
 
     cluster_config = cstorch.distributed.ClusterConfig(
         num_csx=1, job_labels=["name=minprobe-vqvae"], job_time_sec=3600,
         mount_dirs=[REPO_ROOT], python_paths=[REPO_ROOT],
     )
-    backend = cstorch.backend("CSX", cluster_config=cluster_config)
+    backend = cstorch.backend("CSX", compile_only=args.compile_only,
+                              cluster_config=cluster_config)
     compiled_model = cstorch.compile(model, backend)
     optimizer = cstorch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
 
@@ -349,7 +514,7 @@ def run_vqvae(args):
                 # Host-side AR shift: yield dec_in and labels pre-shifted so the
                 # graph never slices (cstorch's slice_filter kernel asserts).
                 tgt = torch.randint(4, vocab, (B, T + 1))
-                yield {
+                b = {
                     # int32, never int64. These ids feed BOTH the embedding
                     # lookup (which lowers to ws_km.onehot and would tolerate
                     # i64) and the pad-mask compare `ids == pad_token_id`, which
@@ -367,10 +532,14 @@ def run_vqvae(args):
                     # memory). Doing it host-side makes the CE a plain multiply.
                     # The pad mask comes over too: deriving it on-wafer as
                     # onehot[:, pad_id] would be a slice, and slice_filter asserts.
-                    "labels_onehot": F.one_hot(tgt[:, 1:], vocab).to(torch.float16),
-                    "label_mask": (tgt[:, 1:] != 1).to(torch.float16),
                     "tgt_lang_id": torch.randint(0, n_langs, (B,), dtype=torch.int32),
                 }
+                if args.loss == "ce":
+                    # B*T*V*2 bytes per step — fine at vocab 512, ~1 GB at the
+                    # real vocab, which is why --loss logsumexp exists.
+                    b["labels_onehot"] = F.one_hot(tgt[:, 1:], vocab).to(torch.float16)
+                    b["label_mask"] = (tgt[:, 1:] != 1).to(torch.float16)
+                yield b
         return gen()
     dataloader = cstorch.utils.data.DataLoader(input_fn)
 
@@ -385,11 +554,28 @@ def run_vqvae(args):
         # just a multiply-and-sum: no gather, no compare, no integer tensor ever
         # reaches the wafer.
         l2d = logits.reshape(-1, logits.size(-1))
-        oh2d = batch["labels_onehot"].reshape(-1, logits.size(-1)).to(l2d.dtype)
-        logp = torch.log_softmax(l2d, dim=-1)
-        nll = -(logp * oh2d).sum(dim=1)
-        m = batch["label_mask"].reshape(-1).to(logp.dtype)
-        recon = (nll * m).sum() / m.sum().clamp(min=1.0)
+        if args.loss == "logsumexp":
+            # Capacity probe only, NOT a real objective: no labels, no CE. This
+            # exercises exactly the full-vocab logits tensor and its backward
+            # through the tied output projection, so a failure here is a
+            # statement about logits capacity and nothing else.
+            #
+            # NOT torch.logsumexp: its backward runs through amax, whose gradient
+            # distributes to the max positions via (x == max) / mask.sum(dim) —
+            # an ADD-reduce over an i1 tensor, and ReduceOp only supports
+            # f16/f32/bf16/cb16. Detaching the max gives the identical value and
+            # identical gradient (the max term cancels analytically) while
+            # keeping amax out of the backward graph entirely. The real CE needs
+            # this same treatment.
+            x = l2d.float()
+            mx = x.amax(dim=-1, keepdim=True).detach()
+            recon = (mx.squeeze(-1) + torch.log(torch.exp(x - mx).sum(dim=-1))).mean()
+        else:
+            oh2d = batch["labels_onehot"].reshape(-1, logits.size(-1)).to(l2d.dtype)
+            logp = torch.log_softmax(l2d, dim=-1)
+            nll = -(logp * oh2d).sum(dim=1)
+            m = batch["label_mask"].reshape(-1).to(logp.dtype)
+            recon = (nll * m).sum() / m.sum().clamp(min=1.0)
         loss = recon + out["vq_losses"]["commit"] + out["vq_losses"]["codebook"]
         loss.backward()
         optimizer.step()

@@ -55,6 +55,12 @@ case "$mode" in
     python cerebras/minimal_probe.py --model attn |& tee minprobe_attn.log ;;
   minprobe-attn2) # hand-written attention (explicit ops, no SDPA) — the fix.
     python cerebras/minimal_probe.py --model attn2 |& tee minprobe_attn2.log ;;
+  minprobe-cehead) # ONLY the output head + CE at real vocab: does the
+            # lookup-based CE (emb[label] instead of an (N,V) one-hot, which is
+            # ~1 GB/step at vocab 250037) lower on the wafer? No VQVAE involved.
+            # NOTE: each probe mode writes its OWN log — two runs tee'ing the
+            # same file interleave into an unreadable mess.
+    python cerebras/minimal_probe.py --model cehead "${@:2}" |& tee minprobe_cehead.log ;;
   minprobe-vqvae) # OUR model (small synthetic) through the known-good loop.
             # Add --no-rvq / --no-tie after the target to bisect components.
     python cerebras/minimal_probe.py --model vqvae "${@:2}" |& tee minprobe_vqvae.log ;;

@@ -46,22 +46,49 @@ def build_model(args, emb):
         use_semantic_head=not args.no_semantic,
         use_rvq=True, n_rvq_levels=args.n_rvq_levels,
         decoder_type="ar", tie_embeddings=True,
+        # Exact positional-table sizes (required on the wafer — otherwise the
+        # forward takes the pe[:T] slice fallback, which slice_filter asserts on).
+        # src_ids is (B, seq_len); the decoder input is tgt[:-1] = seq_len-1.
+        src_len=args.seq_len, tgt_len=args.seq_len - 1,
     )
 
 
-def weighted_ce(logits, targets, pad, token_weight):
+def weighted_ce(logits, dec_h, labels, emb_weight, label_mask, token_weight_t):
     """Token-weighted cross-entropy == vqvae.losses.reconstruction_loss.
 
-    Computed with explicit log_softmax + gather rather than F.cross_entropy: the
-    fused cross_entropy op does not lower on cstorch (it forces a wgth.cast over
-    the vocab dim that the compiler cannot place). This form is numerically
-    equivalent and lowers cleanly."""
-    l2d = logits.reshape(-1, logits.size(-1))
-    t1d = targets.reshape(-1)
-    logp = torch.log_softmax(l2d, dim=-1)
-    nll = -logp.gather(1, t1d.unsqueeze(1)).squeeze(1)          # (N,)
-    mask = (t1d != pad).to(logp.dtype)                          # ignore pad targets
-    w = mask if token_weight is None else token_weight[t1d] * mask
+    CS-3 lookup form. The fused F.cross_entropy does not lower (wgth.cast over
+    the vocab dim), and neither does the obvious explicit form: a `.gather()` on
+    the (N,V) logits streams an i64 index with no valid layout, and a host-built
+    one-hot is ~1 GB/step of bandwidth. Instead:
+
+    - logsumexp with a DETACHED max. torch.logsumexp backprops through amax,
+      whose gradient is an ADD-reduce over an i1 tensor, and ReduceOp only
+      supports f16/f32/bf16/cb16.
+    - target logit by a FROZEN embedding lookup, NOT a gather: because the
+      projection is tied and biasless, logits[i,label] == h_i · emb[label], so
+      logit_t = (dec_h * emb[label]).sum(-1). emb_weight is the frozen table, so
+      the lookup's backward is a no-op (a trainable table would emit a ScatterNd
+      with no kernel).
+
+    CRITICAL: `labels` must be the RAW dataloader tensor. F.embedding lowers to
+    ws_km.onehot only when its index is an unmodified load_input — any reshape /
+    slice / cast on the index first leaves an acth.gather that cannot be placed.
+    So look up on `labels` as-is, reshape the RESULT. This is why the AR shift is
+    done host-side (pre_shifted) and labels arrive un-sliced.
+
+    label_mask and token_weight_t are (B,T) float activations from the host — the
+    pad mask and the per-label token weights, looked up host-side rather than as
+    wafer tables. See cerebras/minimal_probe.run_cehead and CS3_BRINGUP §3.
+    """
+    V = logits.size(-1)
+    x = logits.reshape(-1, V).float()
+    mx = x.amax(dim=-1, keepdim=True).detach()
+    lse = mx.squeeze(-1) + torch.log(torch.exp(x - mx).sum(dim=-1))     # (N,)
+    emb_t = F.embedding(labels, emb_weight).reshape(x.size(0), -1)      # (N, d) frozen
+    logit_t = (dec_h.reshape(x.size(0), -1) * emb_t).sum(dim=-1)        # (N,)
+    nll = lse - logit_t.float()
+    m = label_mask.reshape(-1).to(x.dtype)
+    w = m if token_weight_t is None else token_weight_t.reshape(-1).to(x.dtype) * m
     return (nll * w).sum() / w.sum().clamp(min=1.0)
 
 
@@ -74,11 +101,19 @@ def make_synthetic_input_fn(args, vocab):
     def input_fn():
         def gen():
             for _ in range(args.steps + 2):
+                # Host-side AR shift + int32 ids, matching opus_input. tgt is
+                # (B,T); dec_in/labels are its (B,T-1) shifted halves — so the
+                # decoder input length is seq_len-1, which is what build_model
+                # sizes the decoder pe table to (tgt_len=seq_len-1). ids are int32
+                # (no i64 on the wafer); label_mask is a float pad mask.
+                tgt = torch.randint(4, vocab, (B, T), dtype=torch.int32)
                 b = {
-                    "src_ids": torch.randint(4, vocab, (B, T)),
-                    "tgt_ids": torch.randint(4, vocab, (B, T)),
-                    "src_lang_id": torch.randint(0, args.n_langs, (B,)),
-                    "tgt_lang_id": torch.randint(0, args.n_langs, (B,)),
+                    "src_ids": torch.randint(4, vocab, (B, T), dtype=torch.int32),
+                    "dec_in": tgt[:, :-1].contiguous(),
+                    "labels": tgt[:, 1:].contiguous(),
+                    "label_mask": (tgt[:, 1:] != args.pad_token_id).to(torch.float16),
+                    "src_lang_id": torch.randint(0, args.n_langs, (B,), dtype=torch.int32),
+                    "tgt_lang_id": torch.randint(0, args.n_langs, (B,), dtype=torch.int32),
                 }
                 if not args.no_semantic:
                     b["sem_target"] = torch.randn(B, d_sem)
@@ -87,7 +122,7 @@ def make_synthetic_input_fn(args, vocab):
     return input_fn
 
 
-def build_input_fn(args, vocab):
+def build_input_fn(args, vocab, token_weight=None):
     """Real opus pipeline by default; synthetic only with --synthetic-data."""
     if args.synthetic_data:
         print("input: SYNTHETIC (random shapes only — no real data)")
@@ -100,7 +135,7 @@ def build_input_fn(args, vocab):
         opus_dir=args.opus_dir, seq_len=args.seq_len, batch_size=args.batch_size,
         num_steps=args.steps, parallel_corpus=args.parallel_corpus,
         seed=args.seed, langs=langs, with_semantic=not args.no_semantic,
-        sem_dir=args.sem_dir)
+        sem_dir=args.sem_dir, pad=args.pad_token_id, token_weight=token_weight)
 
 
 def main():
@@ -225,14 +260,21 @@ def main():
     lr_scheduler = cstorch.optim.lr_scheduler.SequentialLR(
         optimizer, schedulers=[warmup, cosine], milestones=[args.warmup_steps])
 
-    if token_weight is not None:
-        token_weight = token_weight.to(cstorch.current_torch_device())  # VERIFY
+    # token_weight is NOT moved to the wafer device: it is a frozen (V,) constant
+    # and the per-label lookup token_weight[labels] happens HOST-side in the
+    # dataloader (opus_input), which yields a (B,T) `token_weight_t` activation.
+    # A wafer-side (V,1) table would need an unplaceable gather; see weighted_ce.
 
     @cstorch.trace
     def train_step(batch):
-        out = compiled_model(batch["src_ids"], batch["tgt_ids"], batch["tgt_lang_id"])
-        recon = weighted_ce(out["logits"], batch["tgt_ids"][:, 1:],
-                            args.pad_token_id, token_weight)
+        # pre_shifted: dec_in and labels are shifted on the host (opus_input),
+        # so `labels` reaches weighted_ce as an un-sliced load_input — required
+        # for the frozen-embedding lookup to lower (see weighted_ce docstring).
+        out = compiled_model(batch["src_ids"], batch["dec_in"], batch["tgt_lang_id"],
+                             pre_shifted=True)
+        recon = weighted_ce(out["logits"], out["dec_h"], batch["labels"],
+                            model.decoder.token_emb.weight,
+                            batch["label_mask"], batch.get("token_weight_t"))
         loss = recon + out["vq_losses"]["commit"] + out["vq_losses"]["codebook"]
         if not args.no_semantic and out["sem_pred"] is not None:
             cos = F.cosine_similarity(out["sem_pred"].float(),
@@ -264,7 +306,8 @@ def main():
         cstorch.save(state, f"{args.out_dir}/nubun_cs_step{step}.mdl")  # VERIFY
         print(f"  checkpoint saved: step {step}")
 
-    dataloader = cstorch.utils.data.DataLoader(build_input_fn(args, vocab))  # VERIFY
+    dataloader = cstorch.utils.data.DataLoader(
+        build_input_fn(args, vocab, token_weight))  # VERIFY
     # DataExecutor takes NO backend kwarg in cstorch 2.10.0 — backend is bound
     # globally by cstorch.backend()/cstorch.compile above.
     executor = cstorch.utils.data.DataExecutor(

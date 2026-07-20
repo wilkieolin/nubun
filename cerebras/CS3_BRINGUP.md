@@ -6,25 +6,33 @@ logs directly — no GCE↔ALCF file sync. Companion docs: `PORT_CS3.md` (cold-s
 `PHASE8.md` (the frozen model). This file is the *debugging* record: what breaks,
 why, and the loop to keep going.
 
-## 0. TL;DR status (2026-07-19)
+## 0. TL;DR status (2026-07-20)
 
-**`minprobe-vqvae` COMPILES AND EXECUTES ON THE WAFER.** As of `c404248`
-(branch `phase8-cs3-wafer-compile`) the full VQVAE — RVQ on, embeddings tied —
-compiles and runs 5 steps on the CS-3 with the loss descending:
+**The real training graph (`train_cstorch.py`) COMPILES CLEANLY AT REAL DIMS**
+(vocab 250037, B=32, T=64), floorplan chosen at `batch=32`, zero errors —
+proven on two `smoke` runs. §7 items 1 AND 2 are done through compile. The
+canary `minprobe-vqvae` also compiles and *executes* (5 steps, loss descending)
+at its small synthetic vocab.
 
 ```
+# canary (small vocab) — compiles AND runs:
 minimal_probe: model=vqvae rvq=True tie=True
-step 0: loss=97.0147   step 3: loss=45.7841
-minimal_probe: DONE — VQVAE compiled and executed.
+step 0: loss=97.0147 … step 3: loss=45.7841 — DONE
+# real graph (smoke, vocab 250037) — compiles clean, execute infra-blocked:
+COUT034  Compilation completed successfully.   Chose floorplan <batch=32, lanes=2>
 ```
 
-That closes §7 item 1. Next action: §7 item 2 (propagate int32 ids + host-side
-label one-hot to `train_cstorch.py` / `opus_input.py` / `compile_check.py`),
-then `smoke`.
+**Execute mode is currently infra-blocked, NOT a code problem.** `smoke` (execute)
+dies in the runtime handshake with `ClockSync … DEADLINE_EXCEEDED` (once silently
+hung ~2h, once at 2m37s) — the same failure the known-good `minprobe-attn2`
+canary hits in execute mode. This is a per-RPC gRPC deadline (seconds), unrelated
+to `job_time_sec` (we set 23h; the 24h cap is the only documented limit). Next
+action: re-run `smoke` for the runtime confirmation once the cluster's execute
+path recovers; the graph itself needs no further changes to get there.
 
 Known gaps left deliberately: `VectorQuantizer` (non-RVQ) still uses the
 argmin+i64 pattern, so `--no-rvq` bisection hits the i64 abort; `nat_decoder.py`
-has an untouched buffer slice (:42) and arange (:113); no `GradScaler` yet.
+has an untouched buffer slice (:42) and arange (:113); no `GradScaler` yet (§7.5).
 
 **The model now diverges from the frozen GB10 model** (see §5) — CS-3 trains from
 scratch; reproduce the frozen 0.435 model with *pre-port* code (git before the
@@ -151,11 +159,38 @@ revealing the next.
 | Don't do | Symptom | Use instead |
 |---|---|---|
 | int64 ids from the dataloader | `act_host_to_wse i64` "no valid layouts", or SIGABRT in `get_mov_simd_width` | yield `int32` (F.embedding accepts int32 indices) |
-| `logits.gather(1, labels)` (i64 gather index) | i64 streamed to wafer | pass labels **already one-hot** as a float activation from the host |
-| `(labels[:,None] == arange(V))` on-wafer | (N,V) integer tensor + big backward fan → "did not fit in memory" | same — build the one-hot host-side |
+| `logits.gather(1, labels)` (i64 gather index) | i64 streamed to wafer | frozen-embedding lookup CE (Class D + below) |
 | `dist.argmin(1)` then `idx == arange` | argmin yields i64 → (N,k) i64 | `onehot = (dist == dist.amin(1,keepdim=True))`, normalize row sums for ties |
 | `x.min(dim=1).values` | also emits an i64 **indices** output that survives | `x.amin(dim=1)` |
 | `pe[:T]` / `onehot @ pe` / `arange` mask | constant-only → GlobalHost or streamed constant | size the buffer to exactly T in `__init__`; broadcast-add |
+
+### Class D — embeddings/gathers: the index must be RAW, the table must be FROZEN
+Every `F.embedding` lowers to a `cirh.Gather`. Two independent conditions decide
+whether it survives; both were discovered the hard way (a full session of wrong
+theories about width, rank, and dtype — see the git log for `13abd18`… onward).
+| Don't do | Symptom | Use instead |
+|---|---|---|
+| index the table with a **derived** tensor (`emb(labels.reshape(N))`, a slice, a cast) | `acth.gather` on the weight → "Unable to insert transfer WGT_HOST→ACT_HOST" | look up with the **raw load_input** (`emb(labels)`), reshape the RESULT. The gather→`ws_km.onehot` rewrite is a peephole that only matches `Gather(weight, load_input)`. |
+| look up a **trainable** embedding | its backward is `cirh.ScatterNd` into the weight → `Failed to convert op to WAF` | look it up only if the table is **frozen** (no-op backward). A trainable per-vocab table (e.g. an output bias) cannot be looked up at all. |
+
+Width/rank/frozen-vs-trainable do NOT affect the *forward* — only these two do.
+Neither is visible offline; both need a wafer compile to observe.
+
+**Full-vocab CE (the real reconstruction loss), `cerebras/train_cstorch.weighted_ce`.**
+Because the output projection is tied and biasless, `logit[i,label] ==
+h_i·emb[label]`, so cross-entropy needs no gather and no (N,V) one-hot:
+```
+lse     = detached-max logsumexp(logits)            # NOT torch.logsumexp — see below
+emb_t   = F.embedding(labels_raw, frozen_emb_weight)  # raw index, frozen table
+logit_t = (dec_h * emb_t).sum(-1)                   # == logits[i,label]
+nll     = lse - logit_t
+```
+`labels` must reach this un-sliced (hence host-side `pre_shifted` AR shift), and
+`dec_h` (the decoder's post-out_norm hidden state) is returned alongside
+`logits`. The pad mask and any per-token weights come from the host as (B,T)
+float activations. This is the ONLY full-vocab CE that lowers: a host-built
+one-hot is ~1 GB/step of bandwidth, an on-wafer one-hot needs a second (N,V)
+tensor beside `logits` that does not co-fit, and a gather streams an i64 index.
 
 ### Other hard rules discovered
 - **NO in-graph slicing at all.** `slice_filter` asserts on *every* `ws_km.slice`
@@ -168,6 +203,18 @@ revealing the next.
   `(idx[:,None] == arange(k))`.
 - **`torch.triu(bool)` doesn't lower.** Causal mask = `arange<arange` (a compare).
 - **`arange` is fine in a COMPARE, not as a gather INDEX or a streamed constant.**
+- **`torch.logsumexp` doesn't lower.** Its backward runs through `amax`, whose
+  gradient is `(x==max)/mask.sum(dim)` — an ADD-reduce over an i1 tensor, and
+  `ReduceOp` only supports f16/f32/bf16/cb16 (`ReduceOp … IN data type is 1`).
+  Use a **detached max**: `mx=x.amax(-1,keepdim=True).detach(); mx+log(exp(x-mx).sum(-1))`.
+  Value and gradient are identical (the max cancels analytically); `amax` never
+  enters the backward graph.
+- **`ReduceOp` is float-only.** Any reduction (`sum`/`mean`/`logsumexp`-tail) over
+  a bool/int tensor fails. Cast to float first, or restructure so the reduce is
+  over floats. (Bool/int are second-class everywhere except as embedding indices.)
+- **No trainable per-vocab output bias.** Dropped (Class D). A `(V,)`/`(V,1)`
+  trainable table scatters on backward. A tied softmax without an output bias is
+  standard; `decoder.out_bias` is removed (§5).
 - **You must fetch a graph output every step** (unconditional `loss.item()` in a
   `step_closure`) or the whole step is DCE'd to an empty module.
 - **Weight-only / data-independent subgraphs are dangerous.** A `LayerNorm` whose
@@ -190,6 +237,22 @@ revealing the next.
   DEADLINE_EXCEEDED`) while the compile path is perfectly healthy.
 - Compile-only vs execute, raw-generator vs torch DataLoader, AdamW+warmup-from-0:
   all tested and fine.
+- **`ClockSync … DEADLINE_EXCEEDED` in EXECUTE mode is infra, not your graph.** It
+  is a per-RPC gRPC deadline on the client↔appliance clock handshake at the start
+  of execution (fails in seconds), unrelated to `job_time_sec` (24h cap is the
+  only documented limit; the ALCF guide lists no execute/ClockSync timeout). Seen
+  on `smoke` (twice, incl. a silent ~2h hang) AND on the known-good `attn2`
+  canary. If `compile` mode is clean but `smoke` dies here, the CODE is fine —
+  the cluster's execute path is unhealthy; validate with `compile` and re-run
+  `smoke` later. Do NOT edit the graph in response to it.
+
+### A meta-lesson worth its own line
+- **A failed compile stops at its FIRST error and tells you nothing downstream.**
+  Reading structure off a *failing* graph produced three wrong theories this
+  session (Class-D width/rank/frozen). The reliable move is to DIFF the failing
+  IR against a *known-good* graph (a prior SUCCEEDED job's `ws_km.mlir`), not to
+  infer a mechanism from the failure alone. And when the coordinator dies by
+  signal, `dbg_crd_0.out` truncates mid-line — the assertion is in `.err` (§2).
 
 ## 4. Verify locally before every wafer run (cheap, no cluster)
 
@@ -231,8 +294,15 @@ accepted** — CS-3 does fresh capacity runs; frozen eval uses pre-port code.
   integer codes are needed (`idx0.round().to(torch.int64)`). The stop-mask
   helpers (`get_stop_mask`/`force_stop_at`/`first_stop_position`) still assume
   integer codes and need updating when `use_stop_mask` is enabled (M6).
-- Dataloader dtypes: token ids are `int32`, and the decoder labels cross over
-  already one-hot as f16 plus a separate float pad mask.
+- **Output bias removed.** `decoder.out_bias` (a `(V,)` Parameter) is gone — a
+  trainable per-vocab table scatters on backward (Class D). Tied softmax, no bias.
+- **Decoder returns `(logits, h)`;** the model dict gains `dec_h`. The full-vocab
+  CE (`weighted_ce`) is the frozen-embedding lookup form (Class D), not gather.
+- Dataloader dtypes / shapes (real path): token ids are `int32`; the host does the
+  AR shift and yields `dec_in`=tgt[:-1] and un-sliced `labels`=tgt[1:] (both
+  length `seq_len-1`), plus a float `label_mask` and, when weighted, a
+  host-looked-up `token_weight_t`; positional tables sized `src_len=seq_len`,
+  `tgt_len=seq_len-1`.
 
 CS-3-trained checkpoints WILL round-trip to GB10 **if GB10 runs this same code**
 (§9 of PORT_CS3). To eval them, run the current `vqvae/` on the GB10, not pre-port.
@@ -243,26 +313,32 @@ Standalone raw-cstorch loop with bisection modes (via `submit_alcf.sh <mode>`):
 - `minprobe` — canonical MLP (baseline sanity / cluster health).
 - `minprobe-attn2` — hand-rolled attention; **known-good**, use as cluster health check.
 - `minprobe-vqvae` — the real `VQVAE` (small synthetic config) = the actual canary.
-  Flags: `--no-rvq`, `--no-tie` for further bisection.
+  Flags: `--no-rvq`, `--no-tie`; also `--vocab/--batch-size/--seq-len` (capacity
+  probing at real dims), `--loss {ce,logsumexp}`, `--compile-only`.
+- `minprobe-cehead` — ONLY the output head + full-vocab CE (`h` from the loader).
+  Isolates the CE primitives from the VQVAE; how the Class-D lookup CE was proven
+  at vocab 250037. Writes its OWN log (probe logs must not share a file).
 - `minprobe`/`-raw`/`-adamw`/`-attn` — historical bisection probes (input, optimizer,
   torch attention); keep for regression.
 
-`smoke` = the real M1 graph (train_cstorch) in execute mode, synthetic data.
-`compile`/`m1`/`m2` = the actual training milestones.
+`smoke` = the real M1 graph (train_cstorch) in execute mode, synthetic data. It
+needs a valid `--mount-dirs`: `data/` may not exist on-node, so run synthetic
+smoke as `DATA_DIR=$REPO bash cerebras/submit_alcf.sh smoke`.
+`compile` = the same graph, compile-only — use it to validate the CODE when the
+execute path is ClockSync-blocked (§3 non-issues). `m1`/`m2` = training milestones.
 
 ## 7. What's left to do (in order)
 
-1. ~~**Finish the compile of `minprobe-vqvae`**~~ — **DONE** (`c404248`). Compiles
-   and executes; see §0.
-2. **Propagate to the real path** (held until the canary compiled — now unblocked).
-   Everything the canary needed applies here too:
-   - `cerebras/train_cstorch.py` `train_step`: call `model(..., pre_shifted=True)`.
-     `weighted_ce` must take a host-side **one-hot** label activation and a float
-     pad mask — its current `.gather()`/`tgt[:,1:]` will hit the i64 abort.
-   - `cerebras/opus_input.py`: yield `dec_in`/`labels_onehot`/`label_mask`
-     pre-shifted on the host, token ids as **int32**, not int64.
-   - `cerebras/compile_check.py`: same pre-shift and dtypes.
-   - Cast `idx0` back to int on the host wherever codes are consumed.
+1. ~~**Compile `minprobe-vqvae`**~~ — **DONE** (`c404248`). Canary compiles+executes.
+2. ~~**Propagate to the real path**~~ — **DONE (through compile).** `smoke`
+   compiles clean at real dims (vocab 250037, B=32); §0. Applied: `decoder.py`
+   drops `out_bias` and returns `(logits, h)`; `model.py` adds `dec_h`;
+   `train_cstorch.weighted_ce` is the frozen-embedding lookup CE (Class D) with
+   `pre_shifted=True` and `src_len`/`tgt_len` sizing; `opus_input.py` yields int32
+   ids + host AR shift + `label_mask`/`token_weight_t`; `compile_check.py` matches.
+   All CPU-verified identical to the old gather CE (diff 0.0). **Remaining: the
+   execute-mode runtime confirmation, gated on the ClockSync infra clearing —
+   re-run `smoke` (or `DATA_DIR=$REPO … smoke`) later; no code change needed.**
 3. **Apply the Class-C fix to `VectorQuantizer`** (non-RVQ, `quantizer.py:73-78`)
    — it still uses argmin + i64 arange, so `--no-rvq` bisection currently aborts.
 4. **`nat_decoder.py`**: buffer slice at :42 and arange at :113 are untouched
@@ -277,6 +353,11 @@ Standalone raw-cstorch loop with bisection modes (via `submit_alcf.sh <mode>`):
 ## 8. Commit trail (Phase 8 CS-3 bring-up), newest first
 
 ```
+a84d3ff real path: lookup CE + no output bias — smoke COMPILES at real dims
+        (decoder returns (logits,h), out_bias dropped; weighted_ce = frozen-emb
+         lookup + detached-max logsumexp; opus/compile_check int32 + host shift;
+         Class D: raw gather index, no trainable per-vocab table). Execute gated
+         on ClockSync infra.
 c404248 no i64 / constant-only subgraphs on the wafer — VQVAE COMPILES + RUNS
         (pe sized to T + broadcast-add; causal mask as float buffer; int32 ids;
          host-side label one-hot; RVQ select via float amin) [supersedes 5e47df6]

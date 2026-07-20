@@ -102,9 +102,11 @@ class Decoder(nn.Module):
             num_layers=n_dec_layers)
         self.out_norm = cs_attention.LayerNorm(d_model)  # explicit-ops LayerNorm
 
-        # Output projection ties to embedding table (parameter sharing).
-        # We keep a separate bias so the frozen emb table stays untouched.
-        self.out_bias = nn.Parameter(torch.zeros(vocab_size))
+        # Output projection ties to the (frozen) embedding table. There is no
+        # output bias on the CS-3: a trainable per-vocab bias needs a ScatterNd
+        # backward into its weight, which has no WAF kernel, and it cannot fold
+        # into the frozen token_emb (partial-freeze = slice, Class B). A tied
+        # softmax without an output bias is standard. See CS3_BRINGUP §3/§5.
 
     def forward(
         self,
@@ -161,5 +163,10 @@ class Decoder(nn.Module):
         # an explicit .t() on the embedding weight — cstorch cannot transfer a
         # transposed/sliced weight parameter to the WSE (same class as the QKV
         # weight-split issue). Numerically identical.
-        logits = F.linear(h, self.token_emb.weight, self.out_bias)  # (B, T, V)
-        return logits
+        logits = F.linear(h, self.token_emb.weight)  # (B, T, V), tied, no bias
+        # Return h (post-out_norm, the exact projection input) so the CS-3 CE can
+        # form the target logit as (h · emb[label]) by a FROZEN embedding lookup
+        # instead of gathering a row out of the (B,T,V) logits — see
+        # cerebras/train_cstorch.weighted_ce. logits[i,label] == h_i·emb[label]
+        # exactly, because the projection is tied and biasless.
+        return logits, h

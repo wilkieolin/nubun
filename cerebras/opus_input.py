@@ -87,11 +87,26 @@ def _fix_len(seq, T, pad, eos):
 def make_opus_input_fn(opus_dir, seq_len, batch_size, num_steps,
                        parallel_corpus="data/parallel_corpus.npz",
                        seed=42, langs=None, with_semantic=False,
-                       sem_dir=None, d_sem=384):
+                       sem_dir=None, d_sem=384, pad=None, token_weight=None):
     """Build the cstorch input_fn. `num_steps` batches are produced (plus a small
     buffer). When with_semantic, `<lang>_en.sem.npz` (from precompute_opus_semantic.py)
-    must sit in sem_dir (defaults to opus_dir) and carry src_sem/tgt_sem."""
-    short_codes, pad, bos, eos = load_meta(parallel_corpus)
+    must sit in sem_dir (defaults to opus_dir) and carry src_sem/tgt_sem.
+
+    CS-3 host-side prep (matches cerebras/train_cstorch.weighted_ce):
+      - ids are int32 (no i64 on the wafer);
+      - the AR shift is done here (pre_shifted): yields dec_in = tgt[:-1] and
+        labels = tgt[1:], so `labels` reaches the CE as an un-sliced load_input
+        (required for the frozen-embedding lookup to lower);
+      - label_mask (float pad mask) and, if token_weight is given, token_weight_t
+        (= token_weight[labels]) are looked up HOST-side and shipped as (B,T-1)
+        float activations rather than wafer-side (V,·) tables.
+    """
+    meta_short, meta_pad, bos, eos = load_meta(parallel_corpus)
+    short_codes = meta_short
+    if pad is None:
+        pad = meta_pad
+    token_weight_np = (token_weight.detach().cpu().numpy().astype(np.float32)
+                       if token_weight is not None else None)
     shard_meta, lang_to_idx = _scan_shards(opus_dir, short_codes, langs)
     en_idx = lang_to_idx["en"]
     sem_dir = sem_dir or opus_dir
@@ -150,12 +165,22 @@ def make_opus_input_fn(opus_dir, seq_len, batch_size, num_steps,
                     if with_semantic:                   # target = MiniLM(source)
                         src_sem, tgt_sem = _sem(path)
                         sem[i] = tgt_sem[row] if swap else src_sem[row]
+                # Host-side AR shift + int32. dec_in/labels are (B, T-1); labels
+                # stays un-sliced downstream so its embedding lookup lowers.
+                dec_in = tgt[:, :-1].astype(np.int32)
+                labels = tgt[:, 1:].astype(np.int32)
+                label_mask = (labels != pad).astype(np.float16)
                 batch = {
-                    "src_ids": torch.from_numpy(src),
-                    "tgt_ids": torch.from_numpy(tgt),
-                    "src_lang_id": torch.from_numpy(slang),
-                    "tgt_lang_id": torch.from_numpy(tlang),
+                    "src_ids": torch.from_numpy(src.astype(np.int32)),
+                    "dec_in": torch.from_numpy(np.ascontiguousarray(dec_in)),
+                    "labels": torch.from_numpy(np.ascontiguousarray(labels)),
+                    "label_mask": torch.from_numpy(np.ascontiguousarray(label_mask)),
+                    "src_lang_id": torch.from_numpy(slang.astype(np.int32)),
+                    "tgt_lang_id": torch.from_numpy(tlang.astype(np.int32)),
                 }
+                if token_weight_np is not None:
+                    tw = token_weight_np[labels].astype(np.float16)  # host lookup
+                    batch["token_weight_t"] = torch.from_numpy(np.ascontiguousarray(tw))
                 if with_semantic:
                     batch["sem_target"] = torch.from_numpy(sem)
                 yield batch

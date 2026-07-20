@@ -183,6 +183,7 @@ class VQVAE(nn.Module):
             w_full = tgt_body.shape[1]
             out_len = (tgt_body != self.pad_token_id).sum(dim=1).clamp(min=1)
             logits = self.decoder(z_q, mem_mask, out_len, tgt_lang_id)  # (B, T, V), T=out_len.max()
+            dec_h = None  # NAT decoder does not expose h; CS-3 lookup CE is AR-only
             if logits.shape[1] < w_full:
                 # Pad time dim to full target width so the existing loss alignment
                 # holds; padded positions map to pad targets and are ignored by CE.
@@ -196,9 +197,10 @@ class VQVAE(nn.Module):
                 drop = (torch.rand_like(dec_in, dtype=torch.float) < word_dropout) & \
                        (dec_in != self.pad_token_id)
                 dec_in = torch.where(drop, torch.full_like(dec_in, mask_token_id), dec_in)
-            logits = self.decoder(z_q, mem_mask, dec_in, tgt_lang_id)
+            logits, dec_h = self.decoder(z_q, mem_mask, dec_in, tgt_lang_id)
         return {
             "logits": logits,
+            "dec_h": dec_h,   # (B,T,d_model) post-out_norm, for the CS-3 lookup CE
             "indices": indices,
             "z_e": z_e,
             "z_q": z_q,

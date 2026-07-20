@@ -35,7 +35,7 @@ except ImportError:
              "(see cerebras/requirements-cerebras.txt).")
 
 
-def build_model(cfg, emb):
+def build_model(cfg, emb, seq_len):
     """Reconstruct the frozen architecture from the checkpoint's saved args.
     Mirrors roundtrip_eval.py's construction so the graph matches training."""
     return VQVAE(
@@ -50,6 +50,7 @@ def build_model(cfg, emb):
         use_rvq=cfg.get("use_rvq", False), n_rvq_levels=cfg.get("n_rvq_levels", 4),
         decoder_type=cfg.get("decoder_type", "ar"),
         tie_embeddings=cfg.get("tie_embeddings", False),
+        src_len=seq_len, tgt_len=seq_len - 1,   # exact pe sizes for the wafer
     )
 
 
@@ -110,7 +111,7 @@ def main():
     # cstorch.backend(backend_type="CSX", compile_dir="./compile", compile_only=True).
     backend = cstorch.backend("CSX", compile_only=True)
 
-    model = build_model(cfg, emb)
+    model = build_model(cfg, emb, args.seq_len)
     if args.load_weights:
         if ckpt is None:
             sys.exit("--load-weights needs a real --checkpoint (not --synthetic).")
@@ -123,17 +124,19 @@ def main():
     token_weight = None  # weighted CE is exercised below only if you pass one in
 
     @cstorch.trace
-    def train_step(src_ids, tgt_ids, tgt_lang_id, sem_target):
-        out = compiled_model(src_ids, tgt_ids, tgt_lang_id)
-        # reconstruction (plain CE here; swap in weighted CE to exercise that path)
+    def train_step(src_ids, dec_in, labels, label_mask, tgt_lang_id, sem_target):
+        out = compiled_model(src_ids, dec_in, tgt_lang_id, pre_shifted=True)
+        # CS-3 lookup CE — see cerebras/train_cstorch.weighted_ce. logsumexp with
+        # a detached max; target logit via a FROZEN embedding lookup on the RAW
+        # `labels` (not a gather / not reshaped-first). No output bias.
         logits = out["logits"]
-        # Explicit CE (log_softmax + gather); fused F.cross_entropy does not
-        # lower on cstorch (wgth.cast placement error over the vocab dim).
-        l2d = logits.reshape(-1, logits.size(-1))
-        t1d = tgt_ids[:, 1:].reshape(-1)
-        logp = F.log_softmax(l2d, dim=-1)
-        nll = -logp.gather(1, t1d.unsqueeze(1)).squeeze(1)
-        m = (t1d != pad).to(logp.dtype)
+        x = logits.reshape(-1, logits.size(-1)).float()
+        mx = x.amax(dim=-1, keepdim=True).detach()
+        lse = mx.squeeze(-1) + torch.log(torch.exp(x - mx).sum(dim=-1))
+        emb_t = F.embedding(labels, model.decoder.token_emb.weight).reshape(x.size(0), -1)
+        logit_t = (out["dec_h"].reshape(x.size(0), -1) * emb_t).sum(dim=-1)
+        nll = lse - logit_t.float()
+        m = label_mask.reshape(-1).to(x.dtype)
         recon = (nll * m).sum() / m.sum().clamp(min=1.0)
         loss = recon + out["vq_losses"]["commit"] + out["vq_losses"]["codebook"]
         if out["sem_pred"] is not None:
@@ -150,10 +153,15 @@ def main():
     def input_fn():
         def gen():
             for _ in range(2):
+                # int32 ids + host-side AR shift, matching opus_input.
+                tgt = torch.randint(4, vocab, (B, T), dtype=torch.int32)
                 yield {
-                    "src_ids": torch.randint(4, vocab, (B, T)),
-                    "tgt_ids": torch.randint(4, vocab, (B, T)),
-                    "tgt_lang_id": torch.randint(0, cfg.get("n_langs", 10), (B,)),
+                    "src_ids": torch.randint(4, vocab, (B, T), dtype=torch.int32),
+                    "dec_in": tgt[:, :-1].contiguous(),
+                    "labels": tgt[:, 1:].contiguous(),
+                    "label_mask": (tgt[:, 1:] != pad).to(torch.float16),
+                    "tgt_lang_id": torch.randint(0, cfg.get("n_langs", 10), (B,),
+                                                 dtype=torch.int32),
                     "sem_target": torch.randn(B, d_sem),
                 }
         return gen()
@@ -173,8 +181,9 @@ def main():
 
     print("Tracing + compiling one step (compile_only, no wafer)...")
     for batch in executor:
-        loss = train_step(batch["src_ids"], batch["tgt_ids"],
-                          batch["tgt_lang_id"], batch["sem_target"])
+        loss = train_step(batch["src_ids"], batch["dec_in"], batch["labels"],
+                          batch["label_mask"], batch["tgt_lang_id"],
+                          batch["sem_target"])
         fetch_loss(loss)
     print("COMPILE CHECK PASSED — the frozen model lowers to the WSE.")
 
