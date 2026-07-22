@@ -129,3 +129,30 @@ Frozen-winner candidate: `data/phase8_B_dmodel512_100k_step100000.pt` (155.4M).
 Next width/schedule levers: B used E2's baseline cosine-100k (not E3's gentler
 schedule), so width+gentle-schedule may add more; and d_model 768 tests whether
 width keeps paying.
+
+## Update — C1/C2: gentle schedule stacks with width; d768 needs lower LR
+
+Two sequential follow-ups on the width winner (B, 0.469):
+
+- **C1 (d512 + gentle schedule): win, 0.5045.** cosine over a 130k horizon (run to
+  completion) — gentler/hotter through mid-training than B's cosine-100k but fully
+  cooled by 130k (safely clear of E3's hot-tail collapse and A's flat-peak
+  divergence). Round-trip real cross **0.5045** (+0.036 over B), shuffle-gap +0.454
+  (strongest of any run), 58.6% of gold. The gentle schedule added *more* here
+  (+0.036) than at d512→384 (E2→E3, +0.018) — it compounds with width.
+- **C2 (d768, same recipe): diverged at ~44k.** Train recon turned up (5.73→5.95),
+  commit loss spiked, val degraded together. Bigger models are more LR-sensitive;
+  width past 512 needs a lower peak LR to be tested (see C3).
+
+Leaderboard (same seeded 200-sentence split, real cross):
+
+| model | real cross | % of gold |
+|-------|-----------|-----------|
+| gold (translation ceiling) | 0.861 | 100% |
+| **C1 — d512, gentle cosine-130k** | **0.5045** | 58.6% |
+| B — d512, cosine-100k | 0.469 | 54.5% |
+| E3 @ 100k — d384 | 0.435 | 50.5% |
+| E2 — d384 | 0.417 | 48.4% |
+
+Stack of wins: E3 0.435 → +width (B) 0.469 → +gentle schedule (C1) 0.5045.
+Best checkpoint: `data/phase8_C1_d512_cos130k_step130000.pt`.
