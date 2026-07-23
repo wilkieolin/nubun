@@ -156,3 +156,18 @@ Leaderboard (same seeded 200-sentence split, real cross):
 
 Stack of wins: E3 0.435 → +width (B) 0.469 → +gentle schedule (C1) 0.5045.
 Best checkpoint: `data/phase8_C1_d512_cos130k_step130000.pt`.
+
+## Frozen winner: C1 (d_model 512, gentle cosine-130k) — round-trip 0.5045
+
+C3 (d_model 768) test: with a stabilized recipe (lr 2e-4, warmup 2000 — 768
+diverges at 3e-4) it trained cleanly but landed at 0.4745, below C1. It posted
+the highest semantic score of any run (0.640) yet its recon lagged (5.93 vs
+C1 5.50): the lower LR needed for 768's stability undertrains it at 130k. So
+768 is undertrained at this step budget, not width-capped — but realizing it
+needs far more steps (uncertain payoff). Width sweet spot at this data/compute
+scale = d_model 512.
+
+FROZEN WINNER: `data/phase8_C1_d512_cos130k_step130000.pt` (RVQ 8x128, tied,
+d_model 512, gentle cosine-130k). Scale-up program: 0.435 -> 0.5045 (+16% rel,
+58.6% of gold) via two stacking levers — width (384->512) and gentle schedule.
+Next lever = data (direct non-English-centric pairs).
