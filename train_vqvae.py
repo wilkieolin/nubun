@@ -22,7 +22,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 
 from vqvae.data import (
-    Opus100Dataset, ParallelDataset, combined_split, load_corpus,
+    Opus100Dataset, ParallelDataset, PivotDataset, combined_split, load_corpus,
     make_collate, make_streaming_collate,
 )
 from vqvae.losses import (
@@ -279,6 +279,13 @@ def main():
                              "(combinatorial capacity). Run without --use-ema/--use-stop-mask.")
     parser.add_argument("--n-rvq-levels", type=int, default=4,
                         help="Number of residual codebooks (codes per slot) for RVQ")
+    parser.add_argument("--pivot-corpus", default="data/pivot_corpus.npz",
+                        help="Phase 8 data lever: non-en-centric X-Y pairs "
+                             "(build_pivot_corpus.py)")
+    parser.add_argument("--pivot-fraction", type=float, default=0.0,
+                        help="Fraction of training batches drawn from the pivot "
+                             "(non-en-centric) corpus vs opus100 (en-centric). "
+                             "0 disables. Only used with --corpus opus100.")
     parser.add_argument("--tie-embeddings", action="store_true",
                         help="Phase 8 E1: share the encoder and decoder token_emb (one "
                              "XLM-R table). Halves embedding params vs two separate copies; "
@@ -442,12 +449,28 @@ def main():
         print(f"  train batches per epoch: {len(train_loader)}")
     elif args.corpus == "opus100":
         opus_ds = Opus100Dataset(args.opus100_dir, meta.short_codes, seed=args.seed)
-        train_loader = DataLoader(
+        opus_loader = DataLoader(
             opus_ds, batch_size=args.batch_size,
             collate_fn=make_streaming_collate(meta.pad_token_id),
             num_workers=0,
         )
         print(f"  opus shards: {[(l, n) for l, n, _ in opus_ds.shard_meta]}")
+        if args.pivot_fraction > 0.0:
+            # Phase 8 data lever: mix in non-en-centric X-Y pivot pairs.
+            pivot_ds = PivotDataset(args.pivot_corpus, seed=args.seed)
+            pivot_loader = DataLoader(
+                pivot_ds, batch_size=args.batch_size,
+                collate_fn=make_streaming_collate(meta.pad_token_id),
+                num_workers=0,
+            )
+            log(f"  MIXING pivot corpus ({pivot_ds.n_pairs} pairs) at "
+                f"pivot_fraction={args.pivot_fraction}")
+            train_loader = _MixedLoader(
+                opus_loader, pivot_loader,
+                opus_fraction=1.0 - args.pivot_fraction,
+                rng=np.random.default_rng(args.seed + 13))
+        else:
+            train_loader = opus_loader
     elif args.corpus == "both":
         # Mix at the iterator level: alternate per-batch
         flores_ds = ParallelDataset(train_ids, train_lens)
