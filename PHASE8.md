@@ -171,3 +171,25 @@ FROZEN WINNER: `data/phase8_C1_d512_cos130k_step130000.pt` (RVQ 8x128, tied,
 d_model 512, gentle cosine-130k). Scale-up program: 0.435 -> 0.5045 (+16% rel,
 58.6% of gold) via two stacking levers — width (384->512) and gentle schedule.
 Next lever = data (direct non-English-centric pairs).
+
+## Data lever (Stage 1, pivot-mining): net negative — interlingua is not data-limited
+
+Pivot-mined 1.15M non-English-centric X-Y pairs from opus100 (shared-English
+sentences; build_pivot_corpus.py) and trained C1's config + 30% pivot (D1).
+Same seeded split:
+
+| metric | C1 (en-centric) | D1 (+30% non-en pivot) |
+|--------|-----------------|------------------------|
+| round-trip real cross | **0.5045** | 0.4228 (−0.082) |
+| interlingua real Jaccard | 0.433 | 0.389 |
+| interlingua lift | +0.262 | +0.268 (tied) |
+
+The pivot mix hurt generation (mined X-Y pairs are noisy: X≈en≈Y transitively,
+so a direct X→Y is lossy) and did NOT strengthen the interlingua (lift unchanged).
+Key finding: **the interlingua is not data-limited** — C1's English-pivoted codes
+already reach a +0.262 cross-lingual lift without any direct non-en supervision.
+The "codes are English-shaped" hypothesis is not supported; the interlingua
+emerges robustly from en-centric data + the semantic loss. Stage 2 (downloading
+a real multi-parallel corpus) was gated on Stage 1 helping, so it is not pursued.
+
+FINAL: C1 (d_model 512, gentle cosine-130k) remains the frozen winner at 0.5045.
