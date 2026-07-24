@@ -1,101 +1,58 @@
-# Nubun — Top Radicals Discovered (Phase 7 RVQ)
+# Nubun — Top Radicals Discovered (Phase 8 winner, C1)
 
-Model: `phase7_rvq_unfroze_cos_100k_step100000.pt` — Perceiver encoder → **RVQ (4×128)**
-bottleneck → unfrozen-embedding AR decoder, trained on opus100 (100k steps, cosine
-LR, semantic + weighted-CE losses). Round-trip cross-lingual meaning = 0.328 (38% of
-the gold-translation ceiling; 70% of a continuous bottleneck).
+Model: `phase8_C1_d512_cos130k_step130000.pt` — Perceiver encoder → **RVQ (8×128)**
+bottleneck → unfrozen-embedding AR decoder, **d_model 512** (widened past the XLM-R
+384 embedding via input/output projections), tied embeddings, trained on opus100
+(130k steps, gentle cosine schedule, semantic + weighted-CE losses).
+**Round-trip cross-lingual meaning = 0.5045** (58.6% of the gold-translation
+ceiling of 0.861) — the best of the Phase 8 scale-up (0.435 → 0.5045 via wider
+network + gentle schedule; see `PHASE8.md`).
 
 **Method (`analyze_codebook.py`, output-side discovery).** For each codebook entry we
 decode many latent sequences containing that code vs. matched controls without it, in
 all 10 languages, and score every output token by log-odds (test vs. control). A
 code's "meaning" is the set of tokens it reliably induces. Reported here are **level-0
-codes** (the coarsest RVQ residual = the primary radical); levels 1–3 add finer,
-progressively less interpretable corrections (see *Coarse-to-fine* below).
+codes** (the coarsest RVQ residual = the primary radical); levels 1–7 add finer,
+progressively less interpretable corrections. Scores in parentheses are cross-lingual
+aggregate log-odds. Full inventory: `results/C1_codebook_L0.txt`.
 
-Scores in parentheses are cross-lingual aggregate log-odds. Not all 128 codes are
-crisp — a substantial, clearly-interpretable fraction is reported; the rest are
-function-word/subword mixes.
+The higher-capacity winner resolves a **richer, more differentiated** set of concepts
+than the earlier d384 models — finer gender/number/temporal distinctions and new
+function-word and entity classes.
 
-## The pronoun system (emergent, near-complete)
+## Pronouns (emergent)
+- **HE** — Char 41: 他 / Er / него / he / He
+- **YOU** — Char 59: Vous / êtes / You / أنت / тебя
+- **WE** — Char 28: we / nosotros / 他们 / रहे
 
-The single most striking result: the model allocated **distinct radicals to a full
-cross-lingual pronoun paradigm**, each consistent across scripts and families.
+## Function words (new at this scale)
+- **CAN (modal)** — Char 32: puedo / peux / pode / puede / peut / могу / 不能
+- **SAY / said** — Char 38: gesagt / disse / dijo / sagen / dit / कहा / says
+- **NEGATION** — Char 60: No / Нет; Char 39: not / ليس / ذلك
+- **connective / affirmation** — Char 44: Por / Y / و / और / हाँ; Char 26: OK (ठीक / حسن / Да / Well)
 
-| Radical | Meaning | Cross-lingual evidence |
-|---------|---------|------------------------|
-| Char 1 | **we / us** | We, Wir, On/nous, 我们, हम, нас, نحن, 我々, Temos |
-| Char 45 | **you** | Вы/Ты, Du, Vous/Tu, можете |
-| Char 68 | **I / me** | me, moi, minha, yo (also Char 79: Eu, Me) |
-| Char 97 | **she / her** | 她, she, her, वह, Elle |
-| Char 114 | **he / him** | 他, Он, he, er, वह, wants |
-| Char 91 | **they / them** | Они, их, them, Ils, los |
+## Number & measure
+- **TWO / count** — Char 4: 2 / 3 / dos / 以上 / bis
+- **legal ARTICLE** — Char 33: article / articles / artículo / المادة / Artikel / 第
 
-## Negation
+## Content concepts
+- **WOMAN** — Char 18: женщин / Frauen / mujeres / 妇女 / mujer / femme / femmes / 女
+- **MAN** — Char 45: man / hommes / homens / Mann
+- **NAME** — Char 14: nombre / اسم / nom / имя
+- **PHONE / call** — Char 21: phone / 電話 / call / llama / llamada / फोन
+- **HOUSE / room** — Char 53: Haus / Raum / доме / quarto
+- **LIFE / world** — Char 61: vida / जीवन / 世界 / Welt / life
+- **NIGHT** — Char 8: رात / Nacht (+ homem)
+- **POLICE / victim** — Char 40: 警 / polícia / victim
+- **URL / web** — Char 50: www (+11.81, strongest single code) / http / W
+- **development / system** — Char 16: sistema / деятельности / 研究 / вопросы; Char 12: Entwicklung / desarrollo
 
-| Radical | Meaning | Evidence |
-|---------|---------|----------|
-| Char 47 | **not** | not, don('t), 不是, لا, ne, Não |
-| Char 35 | **nothing / none** | nada, No, Не, hay/há (there-is/none), anything |
+Each fires on the same meaning across up to 10 languages and 5 scripts.
 
-## People & society
-
-| Radical | Meaning | Evidence |
-|---------|---------|----------|
-| Char 46 | **woman / wife** | femme, 女, mulher, mujer, wife, женщин, woman |
-| Char 83 | **family / children** | enfants, Familie, Kinder, 父亲(father), pai(father), अपने |
-| Char 33 | **human rights** | humanos, 权(rights), direitos, rechte, Menschen |
-| Char 9 | **world / nation / people** | mundo, लोग(people), Land, 国际, 団 |
-
-## Institutions & polity
-
-| Radical | Meaning | Evidence |
-|---------|---------|----------|
-| Char 36 | **council / commission** | Conseil, Comissão, Commission, Consejo, decisão |
-| Char 25 | **nation / community** | 国家, Estados, Gemeinschaft, 国际 |
-| Char 22 | **united (nations/states)** | Estados, Unidas, politik, rechte |
-| Char 50 | **peace / war** | paz, paix, мира, war, situation |
-| Char 102 | **system** | sistema (+3.87), 工作(work), 组(group) |
-| Char 95 | **Israel / Palestine / peace** | Israel (+5.80 — highest in codebook), Palestin, paz |
-
-## Concrete concepts
-
-| Radical | Meaning | Evidence |
-|---------|---------|----------|
-| Char 127 | **city / house / place** | casa, cidade, 街(street), Stadt, ciudad, cerca |
-| Char 99 | **money** | деньги, dinheiro, 金, money |
-| Char 3 | **phone / call / contact** | call, llamada, teléfono, appel, звон, फोन, 电/叫 |
-| Char 30 | **book / list / data** | 本, lista, 资料(material), libro |
-
-## Abstract & functional
-
-| Radical | Meaning | Evidence |
-|---------|---------|----------|
-| Char 41 | **time / moment** | vez, time, momento, Zeit, noch |
-| Char 21 | **sorry / apology** | 对不起, lo siento, désolé, muito |
-| Char 58 | **numbers / dates** | 15, 月(month), 10, 2014, 20 |
-| Char 92 | **ordinal / legal article** | 第(ordinal), 条(clause), пункт(point), third, 十(ten) |
-| Char 106 | **how / as (conjunction)** | Como (+4.43), Dans, wenn, Et |
-
-## Coarse-to-fine structure across RVQ levels
-
-Each slot is a **stack of 4 residual codes** (one per level). Inspecting all four:
-
-| Level | Character quality | Log-odds | Examples |
-|-------|-------------------|----------|----------|
-| **L0** (coarsest) | Cleanest standalone concepts | +1.5–5.8 | the tables above |
-| L1 | Still conceptual, weaker | +1.4–2.0 | name, book/article, we/us |
-| L2 | Moderate, thematic | +1.1–1.8 | institution/society |
-| L3 (finest) | Noisy subword refinements | +0.7–1.1 | fragments |
-
-The top radical sets the concept; lower radicals refine the reconstruction — the
-textbook coarse-to-fine behavior of residual VQ, and a natural fit for a
-"radical stack" per character.
-
-## Takeaway
-
-The bottleneck learned a **discrete, composable, language-independent** vocabulary:
-a full pronoun paradigm, negation, and dozens of content concepts, each firing on the
-same meaning across 10 languages and 5 scripts. This is the core synthetic-logography
-thesis, demonstrated on a model that actually reconstructs meaning (round-trip 0.328).
-
-Full per-code, per-language detail: `results/rvq_char_semantics_L{0,1,2,3}.txt`.
+## Interlingua (bag-of-codes)
+`crosslingual_consistency.py` on C1 (all 10 langs, 45 pairs): mean real Jaccard
+**0.433**, chance 0.171, **lift +0.262** — every language pair positive. Parallel
+translations share ~43% of their primary radicals vs ~17% at chance. The interlingua
+is **not data-limited**: adding direct non-English-centric pairs (Phase 8 data lever)
+did not raise the lift (+0.268, tied) — the codes are already language-neutral from
+English-pivoted training + the semantic loss.

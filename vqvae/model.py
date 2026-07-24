@@ -40,8 +40,15 @@ class VQVAE(nn.Module):
         use_rvq: bool = False,            # Phase 7: residual VQ (n_rvq_levels codes/slot)
         n_rvq_levels: int = 4,
         tie_embeddings: bool = False,     # Phase 8 E1: share enc/dec token_emb (one XLM-R table)
+        d_emb: int | None = None,         # Phase 8 B: embedding dim (pinned 384); if != d_model, project
     ):
         super().__init__()
+        # Phase 8 B: decouple the transformer width (d_model) from the pretrained
+        # embedding dim (d_emb, 384). Default: infer d_emb from the table so d_model
+        # can be widened independently; falls back to d_model (original behavior).
+        if d_emb is None:
+            d_emb = embedding_table.shape[1] if embedding_table is not None else d_model
+        self.d_emb = d_emb
         self.use_stop_mask = use_stop_mask
         self.use_semantic_head = use_semantic_head
         self.use_length_head = use_length_head
@@ -54,7 +61,7 @@ class VQVAE(nn.Module):
             vocab_size=vocab_size, d_model=d_model, d_code=d_code,
             n_enc_layers=n_enc_layers, n_heads=n_heads, d_ff=d_ff,
             m_max=m_max, dropout=dropout, pad_token_id=pad_token_id,
-            embedding_table=embedding_table,
+            embedding_table=embedding_table, d_emb=d_emb,
         )
         if use_rvq:
             self.quantizer = ResidualVectorQuantizer(
@@ -76,7 +83,7 @@ class VQVAE(nn.Module):
                 vocab_size=vocab_size, n_langs=n_langs, d_model=d_model,
                 d_code=d_code, n_dec_layers=n_dec_layers, n_heads=n_heads,
                 d_ff=d_ff, dropout=dropout, pad_token_id=pad_token_id,
-                embedding_table=embedding_table,
+                embedding_table=embedding_table, d_emb=d_emb,
             )
         # Phase 8 E1: tie encoder and decoder input embeddings to a single table.
         # The two separate XLM-R copies (~96M each) dominated trainable params;

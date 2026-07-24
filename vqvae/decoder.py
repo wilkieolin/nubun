@@ -58,16 +58,27 @@ class Decoder(nn.Module):
         dropout: float = 0.1,
         pad_token_id: int = 1,
         embedding_table: torch.Tensor | None = None,
+        d_emb: int | None = None,
     ):
         super().__init__()
         self.pad_token_id = pad_token_id
         self.d_model = d_model
         self.vocab_size = vocab_size
+        # Phase 8 B: embedding is d_emb-dim (384, pinned by XLM-R). When d_model
+        # differs, project up on input and back down before the tied output
+        # matmul, so tying to the d_emb table survives a wider transformer.
+        # d_emb == d_model (default) keeps the original path (no extra params).
+        d_emb = d_emb or d_model
+        self.d_emb = d_emb
 
-        self.token_emb = nn.Embedding(vocab_size, d_model, padding_idx=pad_token_id)
+        self.token_emb = nn.Embedding(vocab_size, d_emb, padding_idx=pad_token_id)
         if embedding_table is not None:
+            assert embedding_table.shape == (vocab_size, d_emb), \
+                f"embedding_table shape {embedding_table.shape} != ({vocab_size}, {d_emb})"
             self.token_emb.weight.data.copy_(embedding_table)
             self.token_emb.weight.requires_grad = False
+        self.emb_proj = nn.Linear(d_emb, d_model) if d_emb != d_model else None
+        self.out_proj = nn.Linear(d_model, d_emb) if d_emb != d_model else None
         self.pos = SinusoidalPositionalEmbedding(d_model)
 
         self.lang_emb = nn.Embedding(n_langs, d_model)
@@ -110,7 +121,9 @@ class Decoder(nn.Module):
         mem_pad_mask = bottleneck_mask.to(torch.int32) == 0  # (B, M) True = pad
 
         # Decoder input: token embeddings + positional
-        tgt_emb = self.token_emb(target_ids)
+        tgt_emb = self.token_emb(target_ids)                    # (B, T, d_emb)
+        if self.emb_proj is not None:
+            tgt_emb = self.emb_proj(tgt_emb)                    # (B, T, d_model)
         tgt_emb = self.pos(tgt_emb)
         tgt_pad_mask = target_ids == self.pad_token_id
 
@@ -129,11 +142,14 @@ class Decoder(nn.Module):
             tgt_key_padding_mask=tgt_pad_mask,
             memory_key_padding_mask=mem_pad_mask,
         )
-        h = self.out_norm(h)
+        h = self.out_norm(h)                                    # (B, T, d_model)
+        if self.out_proj is not None:
+            h = self.out_proj(h)                                # (B, T, d_emb)
 
         # Tied output projection. F.linear(h, W, b) == h @ W.t() + b, but avoids
         # an explicit .t() on the embedding weight — cstorch cannot transfer a
         # transposed/sliced weight parameter to the WSE (same class as the QKV
-        # weight-split issue). Numerically identical.
+        # weight-split issue). Numerically identical. With d_emb != d_model, h has
+        # been projected back to d_emb by out_proj above, so this matches W.
         logits = F.linear(h, self.token_emb.weight, self.out_bias)  # (B, T, V)
         return logits

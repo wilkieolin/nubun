@@ -205,6 +205,56 @@ class Opus100Dataset(IterableDataset):
             }
 
 
+class PivotDataset(IterableDataset):
+    """Streaming dataset over data/pivot_corpus.npz — non-English-centric X-Y
+    pairs pivot-mined from shared English sentences across opus100 shards
+    (build_pivot_corpus.py). Same yield format as Opus100Dataset (single item,
+    src/tgt already picked) so it reuses make_streaming_collate.
+
+    Packed format: a_tokens/a_offsets/a_lang and b_tokens/b_offsets/b_lang.
+    Per item: pick a row, then 50/50 pick direction (a->b or b->a).
+    """
+
+    def __init__(self, path: str = "data/pivot_corpus.npz", seed: int = 42):
+        self.path = path
+        self.seed = seed
+        with np.load(path, allow_pickle=False) as d:
+            self.n_pairs = int(d["n_pairs"])
+        self._mm = None
+
+    def _load(self):
+        if self._mm is None:
+            self._mm = dict(np.load(self.path, mmap_mode="r", allow_pickle=False))
+        return self._mm
+
+    def __iter__(self):
+        worker_info = torch.utils.data.get_worker_info()
+        wid = worker_info.id if worker_info else 0
+        try:
+            import torch.distributed as dist
+            rank = dist.get_rank() if dist.is_available() and dist.is_initialized() else 0
+        except RuntimeError:
+            rank = 0
+        rng = np.random.default_rng(self.seed + rank * 100000 + wid * 1000 + 777)
+        d = self._load()
+        ao, bo = d["a_offsets"], d["b_offsets"]
+        while True:
+            row = int(rng.integers(0, self.n_pairs))
+            a = np.array(d["a_tokens"][ao[row]:ao[row + 1]])
+            b = np.array(d["b_tokens"][bo[row]:bo[row + 1]])
+            la, lb = int(d["a_lang"][row]), int(d["b_lang"][row])
+            if rng.random() < 0.5:
+                src_ids, tgt_ids, src_lang, tgt_lang = a, b, la, lb
+            else:
+                src_ids, tgt_ids, src_lang, tgt_lang = b, a, lb, la
+            yield {
+                "src_ids": src_ids,
+                "tgt_ids": tgt_ids,
+                "src_lang_id": src_lang,
+                "tgt_lang_id": tgt_lang,
+            }
+
+
 def make_streaming_collate(pad_token_id: int):
     """Collate fn for items yielded by Opus100Dataset (each item already has
     src/tgt picked, so we just pad+stack)."""
