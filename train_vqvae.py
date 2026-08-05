@@ -10,6 +10,7 @@ DDP launch (P4 M6):
 """
 
 import argparse
+import glob
 import math
 import os
 import time
@@ -40,14 +41,31 @@ def init_ddp() -> tuple[bool, int, int]:
     world_size = int(os.environ.get("WORLD_SIZE", 1))
     if world_size <= 1:
         return False, rank, world_size
-    # gloo backend works across machines on plain Ethernet (no NCCL/IB needed)
-    dist.init_process_group(backend="gloo", rank=rank, world_size=world_size)
-    print(f"[DDP] rank={rank} world_size={world_size} backend=gloo")
+    # Backend: gloo (CPU allreduce, robust on plain Ethernet) or nccl (GPU
+    # allreduce over the 200GbE link — much faster for large models; gloo's
+    # CPU allreduce made 2-box DDP throughput-negative for the 228M d768 model).
+    # NCCL needs the CUDA device pinned before init_process_group.
+    backend = os.environ.get("DDP_BACKEND", "gloo").lower()
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    # Pin the accelerator before init for GPU-collective backends:
+    # nccl -> cuda (NVIDIA), xccl -> xpu (Intel PVC / Aurora). gloo (CPU) skips.
+    if backend == "nccl" and torch.cuda.is_available():
+        torch.cuda.set_device(local_rank)
+    elif backend == "xccl" and getattr(torch, "xpu", None) is not None and torch.xpu.is_available():
+        torch.xpu.set_device(local_rank)
+    dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
+    print(f"[DDP] rank={rank} world_size={world_size} backend={backend}")
     return True, rank, world_size
 
 
 def is_main_rank(rank: int) -> bool:
     return rank == 0
+
+
+def accel_module(device: torch.device):
+    """Return torch.cuda / torch.xpu for the device (None on cpu). Lets the same
+    code target NVIDIA (cuda) and Intel PVC / Aurora (xpu) without branching."""
+    return getattr(torch, device.type, None) if device.type in ("cuda", "xpu") else None
 
 
 def short_to_indices(short_codes: list[str], names: list[str]) -> list[int]:
@@ -163,6 +181,11 @@ def main():
     parser.add_argument("--embedding-table", default="data/embedding_table.pt")
     parser.add_argument("--output-dir", default="data")
     parser.add_argument("--checkpoint-name", default="vqvae")
+    parser.add_argument("--resume", default="",
+                        help="Resume from a checkpoint: a path, or 'auto' to pick "
+                             "the highest-step {checkpoint_name}_step*.pt in output-dir. "
+                             "Restores model+optimizer+step+lagrangian and fast-forwards "
+                             "the LR schedule. Needed for chained backfill jobs (Aurora).")
     parser.add_argument("--steps", type=int, default=5000)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=3e-4)
@@ -292,7 +315,10 @@ def main():
                              "frees budget for a deeper/wider decoder and regularizes.")
 
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--device", default=(
+        "cuda" if torch.cuda.is_available()
+        else ("xpu" if getattr(torch, "xpu", None) is not None and torch.xpu.is_available()
+              else "cpu")))
     parser.add_argument("--bf16", action="store_true",
                         help="Use bfloat16 for forward/backward")
     args = parser.parse_args()
@@ -378,14 +404,20 @@ def main():
     print(f"  trainable params: {n_train/1e6:.2f}M (total {n_total/1e6:.2f}M)")
 
     device = torch.device(args.device)
+    accel = accel_module(device)
+    # Multi-rank-per-node (e.g. Aurora: 12 PVC tiles/node) — pin each rank to its
+    # own accelerator by LOCAL_RANK so DDP replicas don't collide on device 0.
+    if is_ddp and accel is not None and device.index is None:
+        local_rank = int(os.environ.get("LOCAL_RANK", 0))
+        device = torch.device(f"{device.type}:{local_rank}")
+        accel.set_device(local_rank)
     model = model.to(device)
 
     # Cap CUDA memory on the GB10 unified-memory architecture. The default
-    # caching allocator will reserve nearly the full system pool (we measured
-    # 124 GB reserved on a 121 GB system), starving the rest of the OS and
-    # eventually forcing a lockup as the kernel dumps page cache and swaps.
-    # Training only needs ~4 GB of working set; capping at 30% leaves >80 GB
-    # for the OS, page cache (mmap'd opus shards), and any other processes.
+    # caching allocator reserves nearly the full system pool (124 GB on a 121 GB
+    # box), starving the OS until it swaps and locks up. Only needed on the
+    # unified-memory GB10 (cuda); XPU/PVC has discrete HBM per tile and needs no
+    # cap (set_per_process_memory_fraction is a cuda-only API anyway).
     if device.type == "cuda":
         torch.cuda.set_per_process_memory_fraction(
             float(os.environ.get("CUDA_MEM_FRACTION", "0.30")), device.index or 0)
@@ -419,7 +451,7 @@ def main():
     if is_ddp:
         # find_unused_parameters=False: every fwd uses every param (both encoder
         # and decoder are touched). gradient_as_bucket_view: small memory win.
-        model = DDP(model, device_ids=[device.index] if device.type == "cuda" else None,
+        model = DDP(model, device_ids=[device.index] if device.type in ("cuda", "xpu") else None,
                     find_unused_parameters=(args.no_vq or args.no_code),
                     gradient_as_bucket_view=True)
         # Helper to peek at the unwrapped module (for ema_update, codebook lookup)
@@ -525,10 +557,39 @@ def main():
 
     sched = torch.optim.lr_scheduler.LambdaLR(optim, lr_lambda)
 
+    # --- Resume (chained backfill jobs / crash recovery) ---------------------
+    # Restores model + optimizer + step + lagrangian and fast-forwards the LR
+    # schedule. Streaming data position is not restored (random sampler) — fine.
+    resume_step, resume_lambda = 0, 0.0
+    if args.resume:
+        path = args.resume
+        if path == "auto":
+            cands = glob.glob(os.path.join(
+                args.output_dir, f"{args.checkpoint_name}_step*.pt"))
+            if not cands:
+                raise FileNotFoundError(
+                    f"--resume auto: no {args.checkpoint_name}_step*.pt in {args.output_dir}")
+            path = max(cands, key=lambda p: int(p.split("_step")[-1].split(".pt")[0]))
+        log(f"\nResuming from {path}")
+        ckpt = torch.load(path, map_location="cpu", weights_only=False)
+        unwrapped.load_state_dict(ckpt["model_state"])
+        optim.load_state_dict(ckpt["optim_state"])
+        # Optimizer state tensors load on CPU — move to the training device.
+        for st in optim.state.values():
+            for k, v in st.items():
+                if isinstance(v, torch.Tensor):
+                    st[k] = v.to(device)
+        resume_step = int(ckpt["step"])
+        resume_lambda = float(ckpt.get("lagrangian_lambda", 0.0))
+        for _ in range(resume_step):          # replay LR schedule to the step (cheap, exact)
+            sched.step()
+        log(f"  resumed at step {resume_step}  lr_mult={lr_lambda(resume_step):.4f}  "
+            f"lagrangian={resume_lambda:.4f}")
+
     autocast_dtype = torch.bfloat16 if args.bf16 else None
 
     # Lagrangian λ_len state (for M2 self-tuning length penalty)
-    lagrangian_lambda = 0.0
+    lagrangian_lambda = resume_lambda
     use_lagrangian = args.target_avg_len > 0
     use_hard_cap = args.compression_ratio > 0
     bits_per_code = float(np.log2(args.k))
@@ -542,7 +603,7 @@ def main():
               f"lr={args.lambda_len_lr}, max={args.lambda_len_max}")
     print("=" * 60)
     model.train()
-    step = 0
+    step = resume_step
     epoch = 0
     t_start = time.time()
     log_buf = {"recon": 0.0, "commit": 0.0, "codebook": 0.0, "sem": 0.0,
@@ -665,10 +726,10 @@ def main():
                 # log GPU + system RSS at every log step. CUDA reserved memory
                 # is the more useful number than allocated (allocator pool).
                 mem_str = ""
-                if device.type == "cuda":
-                    cuda_alloc_gb = torch.cuda.memory_allocated() / 1e9
-                    cuda_reserved_gb = torch.cuda.memory_reserved() / 1e9
-                    mem_str += f"  cuda={cuda_alloc_gb:.1f}/{cuda_reserved_gb:.1f}GB"
+                if accel is not None and hasattr(accel, "memory_allocated"):
+                    alloc_gb = accel.memory_allocated() / 1e9
+                    reserved_gb = accel.memory_reserved() / 1e9
+                    mem_str += f"  {device.type}={alloc_gb:.1f}/{reserved_gb:.1f}GB"
                 try:
                     import psutil
                     rss_gb = psutil.Process().memory_info().rss / 1e9
