@@ -6,37 +6,58 @@ logs directly — no GCE↔ALCF file sync. Companion docs: `PORT_CS3.md` (cold-s
 `PHASE8.md` (the frozen model). This file is the *debugging* record: what breaks,
 why, and the loop to keep going.
 
-## 0. TL;DR status (2026-07-20)
+## 0. TL;DR status (2026-10-09)
 
-**The real training graph (`train_cstorch.py`) COMPILES CLEANLY AT REAL DIMS**
-(vocab 250037, B=32, T=64), floorplan chosen at `batch=32`, zero errors —
-proven on two `smoke` runs. §7 items 1 AND 2 are done through compile. The
-canary `minprobe-vqvae` also compiles and *executes* (5 steps, loss descending)
-at its small synthetic vocab.
+**Corrected history (the 2026-07-20 version of this section was wrong).**
+Reconstructed from `cerebras_logs/executors/000001/run_meta.json` (24 compile /
+4 execute jobs) and the 14 exported coordinator logs:
 
-```
-# canary (small vocab) — compiles AND runs:
-minimal_probe: model=vqvae rvq=True tie=True
-step 0: loss=97.0147 … step 3: loss=45.7841 — DONE
-# real graph (smoke, vocab 250037) — compiles clean, execute infra-blocked:
-COUT034  Compilation completed successfully.   Chose floorplan <batch=32, lanes=2>
-```
+- The real graph compiled cleanly three times in July (Jul 19 21:54, Jul 20
+  00:33, Jul 21 15:51; ~17 min each; floorplan `batch=32, lanes=2`) — but with
+  **three different compile-cache hashes**, i.e. three slightly different graphs.
+- **The real graph never executed a training step.** Its single execute job
+  (`wsjob-gwhzz9cp2dxmqwucyyzu6h`, Jul 20 00:50:43Z, placed on
+  `cer-anl-wse001-cs-sy02`) died after 146.6 s. Its logs were **never exported**
+  and the cluster purged the record (~1 week retention). No surviving log
+  contains `DEADLINE_EXCEEDED`; the "ClockSync = infra" diagnosis below was
+  written from the client's terse message. The client's `clock_sync()` deadline
+  is 300 s (`appliance_client.py:328`), so a 147 s death was not that deadline.
+- The known-good canary executed fine the next day (Jul 21 17:07), so the
+  execute path was healthy; the failure was specific to our run. Leading
+  suspects, unproven: `--mount-dirs` included `$REPO/data`, which does not
+  exist on the user node (`disable_mount_check` defaults to True, so nothing
+  flagged it; compile jobs have no worker pods, so only execute saw it), and the
+  always-failing custom worker-image build (no internet from the build pod).
+- The two "hangs" were client-side: the server finished the compile but the
+  client never collected it. `python … |& tee` block-buffers stdout, so the log
+  looked dead and the run was abandoned.
 
-**Execute mode is currently infra-blocked, NOT a code problem.** `smoke` (execute)
-dies in the runtime handshake with `ClockSync … DEADLINE_EXCEEDED` (once silently
-hung ~2h, once at 2m37s) — the same failure the known-good `minprobe-attn2`
-canary hits in execute mode. This is a per-RPC gRPC deadline (seconds), unrelated
-to `job_time_sec` (we set 23h; the 24h cap is the only documented limit). Next
-action: re-run `smoke` for the runtime confirmation once the cluster's execute
-path recovers; the graph itself needs no further changes to get there.
+**Today (2026-10-09), same cluster release R_2.10.0, cluster healthy:**
+- `minprobe-attn2` canary: compile + execute, 5 steps — OK
+  (`wsjob-37madtw8whfsgulkrcypdx` / `wsjob-anhstf3gyetgt4yp5dwtpp`). The
+  `client 1.14.0 vs server 1.20.2` warning is unchanged from July.
+- **Real M1 graph EXECUTED on the wafer for the first time** (`smoke`,
+  synthetic data, bf16, filtered AdamW, clip 1.0, `token_weight_t` streamed,
+  schedule constants pinned to m1's): run `smoke-20261009T013455Z`, compile
+  `wsjob-bxn53ckbfbttzj3edcnqht` (fresh, ~18 min after ~2 h 10 m queue),
+  execute `wsjob-exybxrbrubrixuu6hspevm` on `cer-anl-wse001-cs-sy02` —
+  10 steps, `nubun_cs_step10.mdl` (867 MB, all 360 model tensors finite),
+  python rc 0. `track.json`: execute_prep 230 s, execute_till_recv_loss 281 s
+  — so the July job that died at 147 s died *during execute prep*, consistent
+  with the nonexistent `$REPO/data` mount (still unproven, but no longer
+  reproducible). (Losses not printed: `--log-every` defaulted to 100; smoke
+  modes now pass `--log-every 1`.)
+- **`smoke-m2` (M2 graph) and `m1` (real data, 2000 steps) both succeeded**
+  the same night — see §7 items 4–5. `m1`: 208 samples/s (~6.5 steps/s at
+  B=32, vs ~3.0 on the GB10), recon 10.15 @100 → ~8.8–9.1 from step 1200 on,
+  9.14 @2000; checkpoints round-trip to the eval format (`export_ckpt.py`).
+- Data is staged at `~/code/nubun-copy/data` (embedding table, token weights,
+  parallel corpus, 9 opus100 shards **and** their `.sem.npz`), unpacked to
+  `~/code/nubun-copy/data/opus100_npy` for memory-mapped worker access.
 
-Known gaps left deliberately: `VectorQuantizer` (non-RVQ) still uses the
-argmin+i64 pattern, so `--no-rvq` bisection hits the i64 abort; `nat_decoder.py`
-has an untouched buffer slice (:42) and arange (:113); no `GradScaler` yet (§7.5).
-
-**The model now diverges from the frozen GB10 model** (see §5) — CS-3 trains from
-scratch; reproduce the frozen 0.435 model with *pre-port* code (git before the
-Phase-8 CS-3 commits).
+**Run hygiene is now enforced by `cerebras/submit_alcf.sh`** (see §2b): per-run
+log/artifact/model dirs, proxy-free unbuffered client, mount dirs validated
+before submit, wsjob ids printed and logs auto-exported on failure.
 
 ## 1. THE key fact: offline traces catch nothing
 
@@ -99,6 +120,45 @@ This cost a full misdiagnosis once: the client showed only a bare 502, `.out`
 had no error, and the real cause (an i64 tensor on the wafer) was in `.err`.
 
 Then: fix → verify numerically + trace locally (see §4) → commit → re-run.
+
+## 2b. Run hygiene (what the July runs got wrong — now in the wrapper)
+
+- **Export the EXECUTE job's logs within the hour of any failure**:
+  `bash cerebras/export_logs.sh <wsjob>` (lands in `logx/<wsjob>/`, prints the
+  §2 grep over `dbg_crd_0.out` AND `.err` plus worker/chief/weight errors). Job
+  records expire from the cluster in about a week; the July execute failure is
+  unrecoverable because this was skipped. The wrapper prints the ids on exit
+  and exports automatically when python exits non-zero.
+- **Unbuffered client** (`python -u`) and one log per run
+  (`logs/<mode>-<UTC stamp>.log`); one artifact dir per run
+  (`cerebras_logs/<mode>-<stamp>/`: `run_meta.json` with every wsjob id and
+  timing, `cirh.mlir`, `track.json`, `performance.json`) — the default
+  `cerebras_logs/executors/000001` is overwritten by every run.
+- **No proxy on the appliance client.** gRPC C-core honours `http(s)_proxy`
+  and `~/.bashrc` exports the ALCF proxy; the wrapper sets `no_proxy` for
+  `10.125.8.2,.cerebras.internal` and runs python with the proxy variables
+  unset. Keep the proxy only for pip/git.
+- **Every mount dir must exist** (`cs_common.make_cluster_config` checks, and
+  passes `disable_mount_check=False` so the cluster validates too).
+- **The custom worker-image build always fails here** (`pip-index-connectivity-
+  check`: no internet from the build pod; no `allow-venv` cluster volume
+  either) and the run continues on the stock image after ~1 min. That is what
+  every successful run used. `--skip-image-build` exists but also skips
+  automount configuration — only use it after the canary proves it.
+- **Graph-affecting constants are part of the compile hash**: `--steps`,
+  `--warmup-steps`, `--lr`, `--lr-min-ratio` feed the TRACED LR schedulers.
+  `smoke`/`compile`/`m1` pin identical values (`M1_STEPS`, `WARMUP`) and
+  `smoke` executes only `--max-steps 10` of that schedule, so one ~17-minute
+  compile serves all three. Do not toggle stall detection / POL /
+  micro-batch between runs you want cache-shared.
+- **The torch seed is part of the compile hash too**: cstorch bakes
+  `torch.initial_seed()` into every dropout `RandomUniform` as `global_seed`.
+  `train_cstorch.py` now calls `torch.manual_seed(args.seed)` first thing;
+  keep `--seed` fixed across runs that should share a compile. To find what
+  broke a cache hit, diff the two runs' `cirh.mlir` with `loc(...)` stripped.
+- Compile jobs queue behind other users' P2 compile jobs (37 min of queue for
+  the Oct 9 canary). Budget for it; avoid queueing several of ours at once (Oct 9: `smoke-m2` + `m1` queued
+  together waited ~1.5 h, then ran back to back without trouble).
 
 ## 3. Discoveries: the failure classes and the rules
 
@@ -164,14 +224,28 @@ revealing the next.
 | `x.min(dim=1).values` | also emits an i64 **indices** output that survives | `x.amin(dim=1)` |
 | `pe[:T]` / `onehot @ pe` / `arange` mask | constant-only → GlobalHost or streamed constant | size the buffer to exactly T in `__init__`; broadcast-add |
 
-### Class D — embeddings/gathers: the index must be RAW, the table must be FROZEN
+### Class D — embeddings/gathers: the index must be RAW (the table may train)
 Every `F.embedding` lowers to a `cirh.Gather`. Two independent conditions decide
 whether it survives; both were discovered the hard way (a full session of wrong
 theories about width, rank, and dtype — see the git log for `13abd18`… onward).
 | Don't do | Symptom | Use instead |
 |---|---|---|
 | index the table with a **derived** tensor (`emb(labels.reshape(N))`, a slice, a cast) | `acth.gather` on the weight → "Unable to insert transfer WGT_HOST→ACT_HOST" | look up with the **raw load_input** (`emb(labels)`), reshape the RESULT. The gather→`ws_km.onehot` rewrite is a peephole that only matches `Gather(weight, load_input)`. |
-| look up a **trainable** embedding | its backward is `cirh.ScatterNd` into the weight → `Failed to convert op to WAF` | look it up only if the table is **frozen** (no-op backward). A trainable per-vocab table (e.g. an output bias) cannot be looked up at all. |
+| look up a trainable **width-1** per-vocab table (an output bias, `250037x1`) | its backward `cirh.ScatterNd` → `Failed to convert op to WAF` (`logx-ce4`) | drop the bias (the tied, biasless projection needs none). |
+
+**CORRECTED 2026-10-09: trainable embedding tables DO lower.** The July rule
+"the table must be FROZEN" over-generalized from the width-1 bias failure; the
+`logx-ce2` probe that also had a `250037x384` ScatterNd failed earlier on a
+derived-index forward gather, so the full table was never actually judged.
+Evidence it works: the attn2 canary (512x128 ScatterNd) and the real graph's
+10x384 lang embedding always trained; `smoke-emb` (`--train-embeddings`,
+`wsjob-4iqmfba8mcmctvxycpsrwk` / `wsjob-jtkf3vft7yfpg2ppadyk4k`) compiled and
+ran 10 steps with three `250037x384` ScatterNds (encoder lookup, decoder
+lookup, CE label lookup); all rows updated, tied copies equal, finite.
+This matters: on the GB10 the frozen arm trails the unfrozen arm by ~1 nat of
+recon at every horizon (Phase 6: 9.20 vs 8.12 @2k, 6.43 vs 5.12 @50k) and
+round-trip 0.184 vs 0.430 — and wafer `m1` (frozen) reproduced the frozen GB10
+curve (9.14 @2k).
 
 Width/rank/frozen-vs-trainable do NOT affect the *forward* — only these two do.
 Neither is visible offline; both need a wafer compile to observe.
@@ -237,14 +311,13 @@ tensor beside `logits` that does not co-fit, and a gather streams an i64 index.
   DEADLINE_EXCEEDED`) while the compile path is perfectly healthy.
 - Compile-only vs execute, raw-generator vs torch DataLoader, AdamW+warmup-from-0:
   all tested and fine.
-- **`ClockSync … DEADLINE_EXCEEDED` in EXECUTE mode is infra, not your graph.** It
-  is a per-RPC gRPC deadline on the client↔appliance clock handshake at the start
-  of execution (fails in seconds), unrelated to `job_time_sec` (24h cap is the
-  only documented limit; the ALCF guide lists no execute/ClockSync timeout). Seen
-  on `smoke` (twice, incl. a silent ~2h hang) AND on the known-good `attn2`
-  canary. If `compile` mode is clean but `smoke` dies here, the CODE is fine —
-  the cluster's execute path is unhealthy; validate with `compile` and re-run
-  `smoke` later. Do NOT edit the graph in response to it.
+- **RETRACTED (2026-10-09): "`ClockSync … DEADLINE_EXCEEDED` in execute mode is
+  infra — do NOT edit the graph."** No log ever recorded that message; the
+  only real-graph execute job died at 147 s, under the 300 s clock-sync
+  deadline, and its logs were never exported. Treat any execute-mode death as
+  unexplained until `cerebras/export_logs.sh <execute wsjob>` has been read.
+  Transient infra does exist (the test is reproducibility at the same stage),
+  but the rule as previously written stopped the investigation.
 
 ### A meta-lesson worth its own line
 - **A failed compile stops at its FIRST error and tells you nothing downstream.**
@@ -304,6 +377,38 @@ accepted** — CS-3 does fresh capacity runs; frozen eval uses pre-port code.
   host-looked-up `token_weight_t`; positional tables sized `src_len=seq_len`,
   `tgt_len=seq_len-1`.
 
+- **Precision: bfloat16 activations, fp32 master weights, no loss scaling**
+  (`--half-dtype bfloat16`; GB10 used bf16 autocast). The CSX default is
+  float16 + a required GradScaler. A static-scale `GradScaler(loss_scale=1.0)`
+  must NOT be used with an LR scheduler (it registers on the optimizer but
+  never enters its conditional-update context → `lr_scheduler.step()` raises
+  "Failed to mark tensor"); modelzoo's `MixedPrecision` builds no scaler for
+  bf16 either. `cbfloat16`/`float16` get `GradScaler(loss_scale="dynamic")`.
+- **Optimizer recipe restored to the E3 winner**: AdamW over TRAINABLE params
+  only (the frozen 96M tied table was previously given to AdamW, which
+  preallocates ~770 MB of dead `exp_avg/exp_avg_sq`), `weight_decay=0.01`,
+  `eps=1e-8`, global grad-norm clip 1.0, warmup from `lr/warmup`. Remaining
+  known difference: cstorch AdamW adds `eps` to the *uncorrected* `sqrt(v)`
+  (`AdamBase.py`), so eps acts ~`1/sqrt(1-beta2^t)` larger on early steps;
+  CPU parity check (scratch `verify_c1.py`): gradients identical (4e-9), losses
+  identical to 5 digits over 3 steps, params within 3e-4 from that eps placement.
+- **Embeddings frozen vs E3's unfrozen tied embeddings.** Forced by Class D
+  (trainable embedding lookups scatter on backward). A real capacity
+  difference; the E3 checkpoint's embedding was trained.
+- **Semantic head (M2)**: pooled bottleneck is `z_q.mean(dim=1)` when
+  `use_stop_mask` is off (identical value; the old masked mean reduced a
+  constant-only `ones_like` mask), and the cosine is explicit primitives
+  (`train_cstorch.cosine_sim`, verified == `F.cosine_similarity` fwd+grad).
+- Host activations `label_mask`/`token_weight_t`/`sem_target` are float32 (the
+  graph casts); synthetic `smoke` streams a random `token_weight_t` so it is the
+  same graph as `m1`.
+- Real-data workers memory-map UNPACKED `.npy` shards (`opus100_npy/`, built by
+  `cerebras/unpack_opus.sh`): numpy ignores `mmap_mode` for `.npz`, so the old
+  loader pulled ~1.5 GB per semantic shard into each worker's RAM (first batch
+  took 134 s); unpacked it is 0.1 s to construct and ~100 ms/batch over cold
+  NFS. Token weights (250002 entries) are padded with 1.0 to the 250037 vocab.
+  Each streaming worker offsets the seed by `get_streaming_rank()`.
+
 CS-3-trained checkpoints WILL round-trip to GB10 **if GB10 runs this same code**
 (§9 of PORT_CS3). To eval them, run the current `vqvae/` on the GB10, not pre-port.
 
@@ -321,38 +426,127 @@ Standalone raw-cstorch loop with bisection modes (via `submit_alcf.sh <mode>`):
 - `minprobe`/`-raw`/`-adamw`/`-attn` — historical bisection probes (input, optimizer,
   torch attention); keep for regression.
 
-`smoke` = the real M1 graph (train_cstorch) in execute mode, synthetic data. It
-needs a valid `--mount-dirs`: `data/` may not exist on-node, so run synthetic
-smoke as `DATA_DIR=$REPO bash cerebras/submit_alcf.sh smoke`.
-`compile` = the same graph, compile-only — use it to validate the CODE when the
-execute path is ClockSync-blocked (§3 non-issues). `m1`/`m2` = training milestones.
+`smoke` = the real M1 graph (train_cstorch) in execute mode, synthetic data,
+`--max-steps 10` of the pinned m1 schedule — no data, mounts only the repo.
+`smoke-m2` = the same with the semantic head + loss on (the M2 graph).
+`compile` = the M1 graph with real data, compile-only. `m1`/`m2` = training
+milestones on real data (`DATA_DIR`, default `~/code/nubun-copy/data`; the
+wrapper unpacks `opus100_npy/` once). Every mode: `logs/<mode>-<stamp>.log`,
+`cerebras_logs/<mode>-<stamp>/`, `model_dir/<mode>-<stamp>/`.
 
 ## 7. What's left to do (in order)
 
-1. ~~**Compile `minprobe-vqvae`**~~ — **DONE** (`c404248`). Canary compiles+executes.
-2. ~~**Propagate to the real path**~~ — **DONE (through compile).** `smoke`
-   compiles clean at real dims (vocab 250037, B=32); §0. Applied: `decoder.py`
-   drops `out_bias` and returns `(logits, h)`; `model.py` adds `dec_h`;
-   `train_cstorch.weighted_ce` is the frozen-embedding lookup CE (Class D) with
-   `pre_shifted=True` and `src_len`/`tgt_len` sizing; `opus_input.py` yields int32
-   ids + host AR shift + `label_mask`/`token_weight_t`; `compile_check.py` matches.
-   All CPU-verified identical to the old gather CE (diff 0.0). **Remaining: the
-   execute-mode runtime confirmation, gated on the ClockSync infra clearing —
-   re-run `smoke` (or `DATA_DIR=$REPO … smoke`) later; no code change needed.**
-3. **Apply the Class-C fix to `VectorQuantizer`** (non-RVQ, `quantizer.py:73-78`)
-   — it still uses argmin + i64 arange, so `--no-rvq` bisection currently aborts.
-4. **`nat_decoder.py`**: buffer slice at :42 and arange at :113 are untouched
-   Class-C/slice landmines; fix before any NAT compile.
-5. **Add `cstorch.amp.GradScaler`** for the real fp16 runs (the persistent
-   "half dtype float16 but no grad scaler" warning → gradient underflow in M1/M2).
-   Held deliberately so it didn't muddy the compile bisection.
-6. **`smoke` → `m1`** (needs data staged on ALCF: embedding_table.pt,
-   token_weights.pt, opus100 shards; M2 also needs `precompute_opus_semantic.py`).
-7. Update `PORT_CS3.md §8/§10` with the final op-rewrite list and the divergences.
+1. ~~Compile `minprobe-vqvae`~~ — DONE (`c404248`).
+2. ~~Compile the real graph~~ — DONE (three times in July; never executed).
+3. ~~Execute the real M1 graph~~ — DONE 2026-10-09
+   (`wsjob-exybxrbrubrixuu6hspevm`, 10 steps, checkpoint finite; §0).
+4. ~~`smoke-m2`~~ — DONE 2026-10-09: run `smoke-m2-20261009T041116Z`, compile
+   `wsjob-nmhw8wjzcexauzfaxu9pgk` (fresh), execute `wsjob-eh6uu5synsddksnkquaq4y`,
+   10 finite steps (loss 209.9 → 202.1), checkpoint at step 10. The ~200 loss
+   scale is the synthetic *unscaled* `randn` tied embedding table (row norm
+   ~√384 → huge logits), not a bug: the CPU parity script at D=32 shows the
+   same effect (≈32 vs ln 512 ≈ 6.2). Real-data m1 should start near ~12.
+5. ~~`m1`~~ — DONE 2026-10-09: run `m1-20261009T041121Z`, compile
+   `wsjob-faws8nrhwjypkm66fqz2j5` (fresh, 18 min), execute
+   `wsjob-epx7tgvcjv4bvdde4mj5xu` (6 m 28 s wall, 307 s of steps, 208
+   samples/s, flops_utilization 0.077, no input starvation). Loss (recon):
+   @100 10.15, @500 9.46, @1000 9.43, @1200 8.77, @1500 8.76, @2000 9.14 —
+   descends, then flattens near 9 as the 2000-step cosine decays. GB10
+   reference: Phase 7 (unfrozen embeddings, semantic on) had recon 8.15 @2000.
+   Leading hypothesis for the gap: the tied token table is FROZEN on the wafer
+   (§5), so the output projection cannot learn — a capacity difference, not a
+   bug. Checkpoints @500/1000/1500/2000, all finite.
+   **Expected compile-cache hit did NOT happen** — the smoke and m1 `cirh.mlir`
+   differed only in the dropout `RandomUniform {global_seed}`: cstorch bakes
+   `torch.initial_seed()` into the graph (`ltc_backend.py` `set_rng_state`) and
+   `train_cstorch.py` never seeded torch. FIXED: `torch.manual_seed(args.seed)`
+   right after arg parsing; synthetic and real-data traces now produce
+   identical `cirh.mlir` (verified with validate-only). The next run recompiles
+   once (seed 42 is a new graph); later runs with the same constants should hit.
+5b. **`m1 --train-embeddings` — DONE 2026-10-09, and it is the answer to the
+   frozen-embedding question.** Run `m1-20261009T164423Z`, compile
+   `wsjob-qyeuzwnpgtktmpwaocl3ns` (42 s — cache hit on the `smoke-emb` graph:
+   the seed fix works and synthetic smoke ≡ real-data m1), execute
+   `wsjob-bq8pkctybbirpiksayxaah`, 166 samples/s (vs 208 frozen, −20%),
+   flops_utilization 0.080. Recon, trainable vs frozen at the same step:
+   @100 9.77/10.15, @500 8.02/9.46, @1000 7.88/9.43, @1500 7.22/8.76,
+   @2000 7.73/9.14; mean of the last six logged points (1500–2000)
+   **7.48 vs 8.96, ≈1.5 nats better** — better even than the GB10 unfrozen
+   arm (8.12 @2k, which also carried the semantic loss). Frozen embeddings DO
+   drag training; train them. Same-batch CPU scoring of both step-2000
+   checkpoints on the SAME 16 real batches (`logs/score_m1_frozen_vs_emb.out`):
+   **9.04 frozen vs 7.48 trainable.**
+   `submit_alcf.sh` now passes `--train-embeddings` to every training mode
+   (`FROZEN_EMB=1` opts out). m2 was then launched as a detached chain
+   (`logs/chain_smoke_m2_then_m2.sh` → `.out`): `smoke-m2` with the trainable
+   table, gate (rc 0, 10 finite steps), then `m2` (100k steps, cosine over
+   100k — the E2-style schedule; E3's 200k-stretched cosine was the PHASE8
+   lesson NOT to repeat). At ~5 steps/s m2 fits in one 23 h job (~6 h). Untested idea if throughput matters: the corpus uses
+   only 117,323 of 250,037 token ids (100k cover 99.988%) — a compacted vocab
+   would halve the table, the logits matmul and the ScatterNds.
+5c. **m2 — DONE 2026-10-09** (first full-length wafer run): run
+   `m2-20261009T171835Z`, execute `wsjob-jlmxznppsjc49mkdiulace`, 100k steps,
+   B=32, trainable tied table, semantic on, cosine over 100k, ~5.5 steps/s
+   (~5 h wall). Smoothed logged recon @10k 6.05 · @25k ~5.5 · @50k 5.09 ·
+   @70k 4.76 · @90k 4.63 · last 5k 4.78; no late collapse (one single-batch
+   spike at 30k). CPU recon on the 16 fixed real batches: **4.58** (vs 7.48 for
+   m1-trainable @2k). GB10 Phase 7 (closest surviving log) ended at 4.75.
+   Eval-format checkpoint: `model_dir/m2-20261009T171835Z/nubun_cs_step100000.eval.pt`
+   → run `roundtrip_eval.py` on the GB10 and compare with E3's 0.435.
+
+5d. **Throughput sweep (synthetic, M2 graph, trainable emb), 2026-10-09** — wafer 2
+   (`cer-anl-wse002`) is usable in parallel with wafer 1. samples/s:
+   B=32 ~178 (m2) · B=64 217 · B=128 **298** · B=256 253 · B=512 325; the
+   compiler chose `microbatch=64` for every B>=64 (micro-batch 128 was built and
+   rejected on estimated perf; forcing `--micro-batch-size 128` at B=128 gave
+   234 — worse). Per-sample cost dominates: 70.5% of every 64-slot row is
+   padding (median pair length 13; 82.3% of pairs fit T=32), so the main lever
+   is a short-T phase (`--seq-len 32 --fit-seq-len`). T=32/B=128 with auto
+   micro-batch ABORTS in the compiler ("Memory allocation was unsuccessful",
+   microbatch=32) — use `--min-micro-batch 64`. Equal-samples A/B vs m2
+   (3.2M samples, B=128, lr 6e-4): `logs/ab_chain.sh` arms `t64` and `t32`
+   (20k steps T=32 → 5k steps T=64 via --resume).
+5e. **Equal-samples A/B vs m2 — DONE 2026-10-10** (3.2M samples each; CPU recon on
+   the same 16 fixed real batches at T=64; wall = wafer execute time):
+   | run | recipe | wall | recon |
+   |---|---|---|---|
+   | m2 `m2-20261009T171835Z` | B=32, lr 3e-4, 100k steps | ~5 h | 4.58 |
+   | **t64** `m2-20261009T205948Z` | **B=128, lr 6e-4, 25k steps** | **~2 h 15 m** (~400 samples/s) | **4.42** |
+   | t32 `m2-20261009T221230Z` → `m2-20261010T002355Z` | B=128: 20k steps T=32 (`--fit-seq-len`, 614 samples/s) → 5k steps T=64 (`--resume`) | ~1 h 37 m | 4.77 |
+   | t64 @17.5k (same wall as t32) | | ~1 h 37 m | 4.63 |
+   **Verdict: use B=128, T=64, lr 6e-4 (sqrt-scaled).** Better than m2 at 2.2x the
+   speed. The short-T phase is NOT worth it as configured: it is 1.5x faster per
+   sample but loses 0.14 recon even at equal wall time (long pairs are absent for
+   80% of training; recon jumps to 5.19 at the T=64 switch and only partly
+   recovers in 5k steps). `--resume` across a seq-len change works (positional
+   tables are not in the state_dict). Eval-format checkpoints for the GB10:
+   `model_dir/m2-20261009T205948Z/nubun_cs_step25000.eval.pt` (t64),
+   `model_dir/m2-20261009T171835Z/nubun_cs_step100000.eval.pt` (m2).
+   Untested levers left: vocab compaction (117k used ids), both wafers
+   (`--num-csx 2`) for a final long run.
+6. ~~Round-trip~~ — DONE for `m1` step 500: `cerebras/export_ckpt.py`
+   loads the `.mdl`, rebuilds VQVAE exactly as `roundtrip_eval.py` does, loads
+   strict (0 missing / 0 unexpected), writes `<mdl>.eval.pt`; CPU recon on 4
+   real batches 9.70 vs wafer-logged 9.54. Still to do: run `roundtrip_eval.py`
+   on the GB10 (needs MiniLM). `--resume`
+   (`cstorch.load` of model/optimizer/lr_scheduler/step) is implemented;
+   checkpoints written before it existed lack `lr_scheduler`.
+7. **`m2`** — `--steps` = the real run length (cosine scoped to it), `.sem.npz`
+   already staged and unpacked.
+8. Deferred (off the M1/M2 path): non-RVQ `VectorQuantizer` argmin/i64
+   (`quantizer.py:72-91`), all of `nat_decoder.py`, word dropout
+   (`model.py` — rewrites `dec_in`, breaking the raw-index lookup rule),
+   `target_len`/stop-mask helpers (i64), `--skip-image-build` evaluation.
 
 ## 8. Commit trail (Phase 8 CS-3 bring-up), newest first
 
 ```
+(uncommitted, 2026-10-09) run hygiene + recipe parity + mmap data path
+        cerebras/cs_common.py (shared ClusterConfig/backend/debug args),
+        submit_alcf.sh rewrite, export_logs.sh, unpack_opus.sh;
+        train_cstorch: bf16, trainable-only AdamW wd 0.01 eps 1e-8 clip 1.0,
+        explicit cosine, --max-steps, --artifact-dir; model.py mean pooling;
+        opus_input: mmap .npy shards, abspath, per-worker seed, fp32 floats.
 377aab7 real path: lookup CE + no output bias — smoke COMPILES at real dims
         (decoder returns (logits,h), out_bias dropped; weighted_ce = frozen-emb
          lookup + detached-max logsumexp; opus/compile_check int32 + host shift;

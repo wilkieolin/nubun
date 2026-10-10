@@ -6,9 +6,9 @@ This is the GB10 train_vqvae.py loop re-expressed in the cstorch idiom:
   - checkpointing via @cstorch.checkpoint_closure + cstorch.save
   - cstorch.optim optimizer + LR scheduler
 
-It is written to the documented cstorch 2.x API. It has NOT been run on hardware
-from the authoring machine — treat every `# VERIFY` as a checkpoint against your
-installed release. Bring it up in two milestones (see PORT_CS3.md):
+It is written to the cstorch 2.10.0 API (every call checked against the installed
+release on the ALCF user node, Oct 2026). Bring it up in two milestones (see
+PORT_CS3.md and cerebras/CS3_BRINGUP.md):
 
   M1 (recommended first): recon + RVQ losses only, synthetic or real data.
      Proves the custom model trains on the WSE. Run with --no-semantic.
@@ -25,14 +25,15 @@ import sys
 import torch
 from torch.nn import functional as F
 
-sys.path.insert(0, ".")
-from vqvae.model import VQVAE  # noqa: E402
-
-import cerebras.pytorch as cstorch  # noqa: E402
-
 # Repo root (this file is cerebras/train_cstorch.py) — appliance workers must be
 # able to import `vqvae` from here and mount it, so it seeds the cluster config.
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+from vqvae.model import VQVAE  # noqa: E402
+
+import cerebras.pytorch as cstorch  # noqa: E402
+from cerebras.cs_common import add_cluster_args, make_backend  # noqa: E402
 
 
 def build_model(args, emb):
@@ -92,6 +93,23 @@ def weighted_ce(logits, dec_h, labels, emb_weight, label_mask, token_weight_t):
     return (nll * w).sum() / w.sum().clamp(min=1.0)
 
 
+def cosine_sim(a, b, eps=1e-8):
+    """== F.cosine_similarity(a, b, dim=-1) (vqvae.losses.semantic_loss) in
+    primitives: the fused op has never been compiled on the wafer; this is
+    sums, a sqrt and a divide (verified fwd+grad identical on CPU)."""
+    num = (a * b).sum(dim=-1)
+    den = (torch.sqrt((a * a).sum(dim=-1)).clamp(min=eps)
+           * torch.sqrt((b * b).sum(dim=-1)).clamp(min=eps))
+    return num / den
+
+
+def exec_steps(args):
+    """Steps actually executed in THIS run: --max-steps caps --steps (the schedule
+    length), minus the steps already done by a --resume checkpoint."""
+    n = args.steps if args.max_steps is None else min(args.steps, args.max_steps)
+    return max(0, n - getattr(args, "start_step", 0))
+
+
 def make_synthetic_input_fn(args, vocab):
     """Random batches at the right static shapes — for a no-data dry compile
     (--synthetic-data). Values are meaningless; only shapes matter to the tracer.
@@ -100,7 +118,7 @@ def make_synthetic_input_fn(args, vocab):
 
     def input_fn():
         def gen():
-            for _ in range(args.steps + 2):
+            for _ in range(exec_steps(args) + 2):
                 # Host-side AR shift + int32 ids, matching opus_input. tgt is
                 # (B,T); dec_in/labels are its (B,T-1) shifted halves — so the
                 # decoder input length is seq_len-1, which is what build_model
@@ -111,10 +129,14 @@ def make_synthetic_input_fn(args, vocab):
                     "src_ids": torch.randint(4, vocab, (B, T), dtype=torch.int32),
                     "dec_in": tgt[:, :-1].contiguous(),
                     "labels": tgt[:, 1:].contiguous(),
-                    "label_mask": (tgt[:, 1:] != args.pad_token_id).to(torch.float16),
+                    "label_mask": (tgt[:, 1:] != args.pad_token_id).to(torch.float32),
                     "src_lang_id": torch.randint(0, args.n_langs, (B,), dtype=torch.int32),
                     "tgt_lang_id": torch.randint(0, args.n_langs, (B,), dtype=torch.int32),
                 }
+                if not args.no_token_weights:
+                    # Random positive per-label weights: keeps smoke/compile/m1 ONE
+                    # graph (m1 streams the real token_weight[labels] from the host).
+                    b["token_weight_t"] = torch.rand(B, T - 1, dtype=torch.float32) + 0.5
                 if not args.no_semantic:
                     b["sem_target"] = torch.randn(B, d_sem)
                 yield b
@@ -133,9 +155,10 @@ def build_input_fn(args, vocab, token_weight=None):
           f"(seq_len={args.seq_len}, semantic={not args.no_semantic})")
     return make_opus_input_fn(
         opus_dir=args.opus_dir, seq_len=args.seq_len, batch_size=args.batch_size,
-        num_steps=args.steps, parallel_corpus=args.parallel_corpus,
+        num_steps=exec_steps(args), parallel_corpus=args.parallel_corpus,
         seed=args.seed, langs=langs, with_semantic=not args.no_semantic,
-        sem_dir=args.sem_dir, pad=args.pad_token_id, token_weight=token_weight)
+        sem_dir=args.sem_dir, pad=args.pad_token_id, token_weight=token_weight,
+        max_len=args.seq_len if args.fit_seq_len else None)
 
 
 def main():
@@ -165,29 +188,52 @@ def main():
     ap.add_argument("--warmup-steps", type=int, default=500)
     ap.add_argument("--lr-min-ratio", type=float, default=0.1)
     ap.add_argument("--lambda-sem", type=float, default=5.0)
+    # Optimizer recipe == GB10 train_vqvae.py (AdamW wd 0.01, eps 1e-8, clip 1.0).
+    ap.add_argument("--weight-decay", type=float, default=0.01)
+    ap.add_argument("--adam-eps", type=float, default=1e-8)
+    ap.add_argument("--grad-clip", type=float, default=1.0,
+                    help="Global grad-norm clip (0 disables).")
+    ap.add_argument("--half-dtype", choices=["bfloat16", "cbfloat16", "float16"],
+                    default="bfloat16",
+                    help="Mixed-precision activation dtype on the wafer. bfloat16 "
+                         "matches the GB10 bf16-autocast recipe and needs no loss "
+                         "scaling; cbfloat16/float16 enable dynamic loss scaling.")
     ap.add_argument("--no-semantic", action="store_true", help="M1: drop semantic loss")
+    ap.add_argument("--fit-seq-len", action="store_true",
+                    help="sample only pairs whose both sides fit --seq-len (no "
+                         "truncation); for short-T training phases")
+    ap.add_argument("--micro-batch-size", default="auto",
+                    help="cstorch.backends.csx.performance.micro_batch_size: 'auto' "
+                         "(compiler picks; it chose 64 for B>=128 on Oct 9) or an int "
+                         "dividing --batch-size. Part of the compile hash.")
+    ap.add_argument("--min-micro-batch", type=int, default=0,
+                    help="with --micro-batch-size auto: lower bound on the compiler's "
+                         "micro-batch search (INI ws_opt_force_min_grad_accum_batch). "
+                         "T=32,B=128 auto ABORTS on a micro-batch-32 floorplan "
+                         "('Memory allocation was unsuccessful'); 64 avoids it.")
+    ap.add_argument("--train-embeddings", action="store_true",
+                    help="make the tied token table trainable, as the GB10 E3 "
+                         "recipe (--unfreeze-embeddings) did; EXPERIMENTAL on the "
+                         "wafer — its lookup backward is a ScatterNd into the table")
     ap.add_argument("--no-token-weights", action="store_true")
     ap.add_argument("--log-every", type=int, default=100)
     ap.add_argument("--ckpt-every", type=int, default=20000)
+    ap.add_argument("--resume", default=None,
+                    help="Checkpoint (.mdl from this script) to continue from: "
+                         "restores model, optimizer, LR schedule and step count. "
+                         "Use for 24h ALCF job segments; keep --steps identical.")
     ap.add_argument("--compile-only", action="store_true")
     ap.add_argument("--validate-only", action="store_true")
-    # --- CS-3 appliance / ALCF cluster config (see PORT_CS3.md §11) ------------
+    ap.add_argument("--max-steps", type=int, default=None,
+                    help="Execute at most this many steps (DataExecutor num_steps) "
+                         "while keeping --steps as the LR-schedule length. The "
+                         "schedule constants are traced into the graph, so a 10-step "
+                         "smoke with --steps 2000 shares m1's compile.")
+    # --- CS-3 appliance / ALCF cluster config (cerebras/cs_common.py) ----------
     # On an ALCF user node mgmt_address + credentials come from
     # /opt/cerebras/config_v2 automatically; we only supply run shape + the dirs
-    # the appliance workers must see. Off an ALCF node these are harmless — the
-    # backend still stops at ClusterConfigError (no mgmt_address), as documented.
-    ap.add_argument("--num-csx", type=int, default=1,
-                    help="Number of CS-3 systems to request (ALCF has 4).")
-    ap.add_argument("--job-time-sec", type=int, default=82800,
-                    help="Wall-clock cap in seconds (ALCF hard limit is 24h).")
-    ap.add_argument("--job-label", default="name=nubun",
-                    help="label=value tag for `csctl get jobs` filtering.")
-    ap.add_argument("--mount-dirs", default=None,
-                    help="Comma-separated dirs the workers mount (repo + data). "
-                         "Defaults to the repo root; add your ALCF data dir.")
-    ap.add_argument("--python-paths", default=None,
-                    help="Comma-separated PYTHONPATH dirs for the workers "
-                         "(must include the repo root so `import vqvae` works).")
+    # the appliance workers must see.
+    add_cluster_args(ap, default_label="name=nubun")
     # architecture (frozen E3 recipe defaults)
     ap.add_argument("--vocab-size", type=int, default=250037,
                     help="Only used with --synthetic-data (real vocab comes from "
@@ -206,6 +252,13 @@ def main():
     ap.add_argument("--pad-token-id", type=int, default=1)
     args = ap.parse_args()
 
+    # Seed BEFORE anything draws from torch's RNG. cstorch bakes
+    # torch.initial_seed() into the lowered graph as the dropout RandomUniform
+    # global_seed (ltc_backend.py set_rng_state), so an unseeded run gets a new
+    # graph hash every time — no compile-cache hits, ever (seen Oct 9: smoke and
+    # m1 differed ONLY in global_seed). Also makes model init reproducible.
+    torch.manual_seed(args.seed)
+
     # --synthetic-data is a zero-file dry compile: fabricate a random emb table so
     # the graph can be built and traced without any data/ files present.
     if args.synthetic_data and not os.path.exists(args.embedding_table):
@@ -217,31 +270,53 @@ def main():
     vocab = emb.shape[0]
     token_weight = None
     if not args.no_token_weights and not args.synthetic_data:
-        token_weight = torch.load(args.token_weights, map_location="cpu")
+        token_weight = torch.load(args.token_weights, map_location="cpu").float()
+        if token_weight.numel() < vocab:            # 250002-entry table, 250037 vocab
+            pad_w = torch.ones(vocab - token_weight.numel())
+            token_weight = torch.cat([token_weight, pad_w])
 
-    # Cluster config: what to run and which dirs the appliance workers see. The
-    # cluster address/credentials are resolved from the ALCF user node's
-    # /opt/cerebras/config_v2, so we deliberately do NOT set mgmt_address here.
-    mount_dirs = ([d for d in args.mount_dirs.split(",") if d]
-                  if args.mount_dirs else [REPO_ROOT])
-    python_paths = ([d for d in args.python_paths.split(",") if d]
-                    if args.python_paths else [REPO_ROOT])
-    cluster_config = cstorch.distributed.ClusterConfig(  # VERIFY: 2.10.0 fields
-        num_csx=args.num_csx,
-        job_labels=[args.job_label],
-        job_time_sec=args.job_time_sec,
-        mount_dirs=mount_dirs,
-        python_paths=python_paths,
-    )
-    # VERIFY: backend construction / kwargs may differ by release.
-    backend = cstorch.backend(
-        "CSX", compile_only=args.compile_only, validate_only=args.validate_only,
-        cluster_config=cluster_config)
+    backend = make_backend(args, compile_only=args.compile_only,
+                           validate_only=args.validate_only)
+    os.makedirs(args.out_dir, exist_ok=True)
+
+    # Precision. The CSX backend always runs mixed precision (fp32 master
+    # weights, half-dtype activations). Default half dtype is float16, which
+    # needs loss scaling; we use bfloat16 like the GB10 recipe. Must be set
+    # before the model and the dataloader are built.
+    cstorch.amp.set_half_dtype(args.half_dtype)
+    mbs = args.micro_batch_size
+    cstorch.backends.csx.performance.micro_batch_size = (
+        mbs if mbs in ("auto", "explore", None) else int(mbs))
+    if args.min_micro_batch:
+        # Must come AFTER the micro_batch_size setter, which clears these INIs.
+        cstorch.backends.csx.debug.ini.ws_opt_force_min_grad_accum_batch = args.min_micro_batch
 
     model = build_model(args, emb)
+    if args.train_embeddings:
+        # Tied: encoder.token_emb.weight IS decoder.token_emb.weight.
+        model.decoder.token_emb.weight.requires_grad = True
+        model.encoder.token_emb.weight.requires_grad = True
     model.train()
-    compiled_model = cstorch.compile(model, backend)              # VERIFY
-    optimizer = cstorch.optim.AdamW(model.parameters(), lr=args.lr)  # VERIFY
+    compiled_model = cstorch.compile(model, backend)
+    # Only trainable params: the tied 250037x384 token table is frozen by
+    # default on the CS-3 (its lookup backward is a ScatterNd — CS3_BRINGUP
+    # Class D; --train-embeddings tests whether that lowers), and cstorch AdamW preallocates exp_avg/exp_avg_sq for EVERY
+    # param it is given (~770 MB of dead state and checkpoint bloat otherwise).
+    trainable = [p for p in model.parameters() if p.requires_grad]
+    n_tr = sum(p.numel() for p in trainable)
+    n_all = sum(p.numel() for p in model.parameters())
+    print(f"params: trainable {n_tr/1e6:.1f}M of {n_all/1e6:.1f}M "
+          f"(frozen {(n_all-n_tr)/1e6:.1f}M)")
+    optimizer = cstorch.optim.AdamW(trainable, lr=args.lr,
+                                    weight_decay=args.weight_decay,
+                                    eps=args.adam_eps)
+    # Loss scaling only for fp16/cb16 (modelzoo's MixedPrecision does the same:
+    # "No need to use loss scaling when half dtype is bfloat16"). Do NOT build a
+    # static-scale GradScaler for bf16: it registers on the optimizer but never
+    # enters its conditional-update context, so lr_scheduler.step() raises
+    # "Failed to mark tensor". The scaler must be built AFTER the optimizer.
+    grad_scaler = (None if args.half_dtype == "bfloat16"
+                   else cstorch.amp.GradScaler(loss_scale="dynamic"))
 
     # Linear warmup -> cosine decay, built from native cstorch schedulers.
     # cstorch's LambdaLR is NOT torch's (it takes initial_learning_rate and wants
@@ -249,16 +324,26 @@ def main():
     # SequentialLR instead. IMPORTANT: CosineDecayLR.total_iters is the ACTUAL
     # remaining step count — do NOT stretch cosine past the run length (that hot-LR
     # tail collapsed the RVQ codebook on the GB10; see PORT_CS3.md / PHASE8.md).
-    sched = cstorch.optim.lr_scheduler
     warmup = cstorch.optim.lr_scheduler.LinearLR(
-        optimizer, initial_learning_rate=0.0, end_learning_rate=args.lr,
-        total_iters=max(1, args.warmup_steps))
+        optimizer, initial_learning_rate=args.lr / max(1, args.warmup_steps),
+        end_learning_rate=args.lr, total_iters=max(1, args.warmup_steps))
     cosine = cstorch.optim.lr_scheduler.CosineDecayLR(
         optimizer, initial_learning_rate=args.lr,
         end_learning_rate=args.lr * args.lr_min_ratio,
         total_iters=max(1, args.steps - args.warmup_steps))
     lr_scheduler = cstorch.optim.lr_scheduler.SequentialLR(
         optimizer, schedulers=[warmup, cosine], milestones=[args.warmup_steps])
+
+    args.start_step = 0
+    if args.resume:
+        state = cstorch.load(args.resume)
+        model.load_state_dict(state["model"])
+        optimizer.load_state_dict(state["optimizer"])
+        if "lr_scheduler" in state:
+            lr_scheduler.load_state_dict(state["lr_scheduler"])
+        args.start_step = int(state["step"])
+        print(f"resumed from {args.resume} at step {args.start_step}; "
+              f"{exec_steps(args)} steps remain")
 
     # token_weight is NOT moved to the wafer device: it is a frozen (V,) constant
     # and the per-label lookup token_weight[labels] happens HOST-side in the
@@ -277,11 +362,22 @@ def main():
                             batch["label_mask"], batch.get("token_weight_t"))
         loss = recon + out["vq_losses"]["commit"] + out["vq_losses"]["codebook"]
         if not args.no_semantic and out["sem_pred"] is not None:
-            cos = F.cosine_similarity(out["sem_pred"].float(),
-                                      batch["sem_target"].float(), dim=-1)
+            cos = cosine_sim(out["sem_pred"].float(), batch["sem_target"].float())
             loss = loss + args.lambda_sem * (1.0 - cos).mean()
-        loss.backward()
-        optimizer.step()
+        # Same sequence as modelzoo MixedPrecision: [scale] -> backward ->
+        # [unscale] -> clip_grad_norm_ -> step -> [update] -> zero_grad -> sched.
+        if grad_scaler is None:
+            loss.backward()
+        else:
+            grad_scaler.scale(loss).backward()
+            grad_scaler.unscale_(optimizer)
+        if args.grad_clip > 0:
+            torch.nn.utils.clip_grad_norm_(trainable, args.grad_clip)
+        if grad_scaler is None:
+            optimizer.step()
+        else:
+            grad_scaler.step(optimizer)
+            grad_scaler.update()
         optimizer.zero_grad()
         lr_scheduler.step()
         return loss, recon
@@ -302,20 +398,22 @@ def main():
     @cstorch.checkpoint_closure
     def save_ckpt(step):
         state = {"model": model.state_dict(),
-                 "optimizer": optimizer.state_dict(), "step": step}
-        cstorch.save(state, f"{args.out_dir}/nubun_cs_step{step}.mdl")  # VERIFY
+                 "optimizer": optimizer.state_dict(),
+                 "lr_scheduler": lr_scheduler.state_dict(), "step": step}
+        cstorch.save(state, f"{args.out_dir}/nubun_cs_step{step}.mdl")
         print(f"  checkpoint saved: step {step}")
 
     dataloader = cstorch.utils.data.DataLoader(
-        build_input_fn(args, vocab, token_weight))  # VERIFY
+        build_input_fn(args, vocab, token_weight))
     # DataExecutor takes NO backend kwarg in cstorch 2.10.0 — backend is bound
     # globally by cstorch.backend()/cstorch.compile above.
     executor = cstorch.utils.data.DataExecutor(
-        dataloader, num_steps=args.steps, checkpoint_steps=args.ckpt_every)
+        dataloader, num_steps=exec_steps(args), checkpoint_steps=args.ckpt_every)
 
-    print(f"Starting cstorch run: steps={args.steps} semantic={not args.no_semantic} "
-          f"compile_only={args.compile_only}")
-    for step, batch in enumerate(executor, start=1):
+    print(f"Starting cstorch run: steps={exec_steps(args)} (schedule {args.steps}) "
+          f"semantic={not args.no_semantic} compile_only={args.compile_only} "
+          f"validate_only={args.validate_only} artifact_dir={args.artifact_dir}")
+    for step, batch in enumerate(executor, start=args.start_step + 1):
         loss, recon = train_step(batch)
         log_step(step, loss, recon)
         save_ckpt(step)

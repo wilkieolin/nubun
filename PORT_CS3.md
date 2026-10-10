@@ -119,7 +119,8 @@ cstorch's `LambdaLR` is not torch's).
     python cerebras/train_cstorch.py --steps 100000
 
 The real data pipeline is **done**: `cerebras/opus_input.py::make_opus_input_fn`
-streams the same packed opus shards as `vqvae/data.py::Opus100Dataset` and adapts
+streams the same packed opus shards as `vqvae/data.py::Opus100Dataset` (memory-
+mapped from the unpacked `opus100_npy/` form — see CS3_BRINGUP §5) and adapts
 them to the two cstorch requirements — (1) **static shapes**: every batch is
 exactly `(B, seq_len)`; longer sentences are truncated (terminal EOS preserved),
 shorter ones pad. (2) **no frozen MiniLM in the trace**: the semantic target is
@@ -192,7 +193,9 @@ state_dict into a `train_vqvae`-style checkpoint dict:
             "model_state": cs_state["model"]}
     torch.save(ckpt, "data/phase8_csX_stepSTEP.pt")
 
-then on the GB10:
+(`cerebras/export_ckpt.py <mdl> --embedding-table ...` does this, loads the
+result strict into the exact `roundtrip_eval.py` model, and with `--opus-dir`
+scores a few real batches on the CPU), then on the GB10:
 
     CUDA_MEM_FRACTION=0.40 python roundtrip_eval.py \
         --checkpoint data/phase8_csX_stepSTEP.pt \
@@ -244,22 +247,36 @@ gate check stops at `ClusterConfigError` on a non-ALCF box — see §6.)
 plus `data/embedding_table.pt`, `data/token_weights.pt`, and the opus
 `data/opus100/*.npz` shards (§4). The appliance workers mount these dirs.
 
-**Submit** with the wrapper (dry compile → M1 → M2):
+**Submit** with the wrapper (canary → smoke → M1 → M2). Every run gets its own
+`logs/<mode>-<stamp>.log`, `cerebras_logs/<mode>-<stamp>/` and
+`model_dir/<mode>-<stamp>/`; the wrapper runs the client unbuffered and
+proxy-free, validates mount dirs, prints the wsjob ids and auto-exports logs
+when python fails (`cerebras/export_logs.sh <wsjob>` does it by hand):
 
-    bash cerebras/submit_alcf.sh compile   # trace+compile only, no wafer time
-    bash cerebras/submit_alcf.sh m1        # recon + RVQ only
-    bash cerebras/submit_alcf.sh m2        # full recipe
+    bash cerebras/submit_alcf.sh minprobe-attn2   # cluster health canary (execute)
+    bash cerebras/submit_alcf.sh smoke            # real M1 graph, synthetic, 10 steps
+    bash cerebras/submit_alcf.sh smoke-m2         # real M2 graph, synthetic
+    bash cerebras/submit_alcf.sh m1               # recon + RVQ, real data
+    bash cerebras/submit_alcf.sh m2               # full recipe
 
-or call the script directly with the cluster flags:
+`DATA_DIR` (default `$HOME/code/nubun-copy/data`) must hold the §4 files; the
+wrapper unpacks `opus100/*.npz` into `opus100_npy/` once so the appliance
+workers can memory-map them. `smoke`, `compile` and `m1` pin the same schedule
+constants (`M1_STEPS=2000`, `WARMUP=500`) and therefore share one compile.
 
-    python cerebras/train_cstorch.py --steps 100000 \
+Or call the script directly with the cluster flags:
+
+    python -u cerebras/train_cstorch.py --steps 100000 \
         --num-csx 1 --job-time-sec 82800 --job-label name=nubun-m2 \
-        --mount-dirs "$REPO,$REPO/data" --python-paths "$REPO"
+        --mount-dirs "$REPO,$DATA_DIR" --python-paths "$REPO" \
+        --artifact-dir cerebras_logs/m2-run1 --out-dir model_dir/m2-run1 \
+        --embedding-table $DATA_DIR/embedding_table.pt --token-weights $DATA_DIR/token_weights.pt \
+        --opus-dir $DATA_DIR/opus100_npy --parallel-corpus $DATA_DIR/parallel_corpus.npz \
+        --sem-dir $DATA_DIR/opus100_npy
 
-`--mount-dirs` are the dirs workers mount (repo + data); `--python-paths` must
-include the repo root so workers can `import vqvae`. `--num-csx` requests systems
-(ALCF has 4); `--job-time-sec` is capped at 24h. Defaults target repo root + 1
-system + 23h.
+`--mount-dirs` are the dirs workers mount (repo + data; every one must exist);
+`--python-paths` must include the repo root so workers can `import cerebras.opus_input`.
+`--num-csx` requests systems (ALCF has 4); `--job-time-sec` is capped at 24h.
 
 **Monitor / manage** from a second console (`csctl` is the appliance CLI):
 
@@ -267,8 +284,7 @@ system + 23h.
     csctl cancel job <wsjob-id>
     csctl get cluster                    # per-node state
 
-**Still open before a real run:** (1) stage the data files on ALCF (§4) and, for
-M2, run `precompute_opus_semantic.py` there to make the `<lang>_en.sem.npz`
-targets; (2) launch via the wrapper and confirm M1 reaches real execution (the
-loop, the opus pipeline, and cluster config are all done and trace clean); (3)
-get the trained `.mdl` back to the GB10 for round-trip eval (§9).
+**Status 2026-10-09:** data is staged on ALCF (`~/code/nubun-copy/data`,
+including the `<lang>_en.sem.npz` targets) and unpacked; the canary executes;
+the real graph traces and compiles. What remains is in
+`cerebras/CS3_BRINGUP.md` §7 (execute the real graph, then M1, then M2).

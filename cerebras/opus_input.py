@@ -18,8 +18,22 @@ a row uniformly, then 50/50 swap direction (X->en vs en->X). Kept self-contained
 in cerebras/ so the shared GB10 data code stays untouched.
 
 Contract: make_opus_input_fn(...) returns a zero-arg `input_fn` that yields
-pre-batched CPU-tensor dicts {src_ids, tgt_ids, src_lang_id, tgt_lang_id
-[, sem_target]}, matching what train_cstorch.py's train_step consumes.
+pre-batched CPU-tensor dicts {src_ids, dec_in, labels, label_mask, src_lang_id,
+tgt_lang_id [, token_weight_t] [, sem_target]}, matching what
+train_cstorch.py's train_step consumes.
+
+Appliance-worker notes (the closure returned here is pickled and runs on the
+worker pods, whose cwd is NOT the repo and whose memory is limited):
+  - every path is made absolute at construction time;
+  - shards are read from UNPACKED `.npy` members so they are memory-mapped:
+    `<opus_dir>/<lang>_en/{src_tokens,src_offsets,tgt_tokens,tgt_offsets,n_pairs,lang_code}.npy`
+    and `<sem_dir>/<lang>_en.sem/{src_sem,tgt_sem}.npy` (fp16, cast per row).
+    Unpack once with cerebras/unpack_opus.sh (an .npz is a zip of stored
+    .npy files, and numpy ignores mmap_mode for .npz: loading the .npz form
+    reads ~1.5 GB per semantic shard into RAM per worker). The .npz form is
+    still accepted as a fallback for small/dry runs;
+  - each streaming worker offsets the RNG seed by its rank so multiple
+    workers / CS-X systems do not replay the same sample stream.
 """
 import glob
 import os
@@ -45,25 +59,63 @@ def load_meta(parallel_corpus_path):
     return _DEFAULT_SHORT_CODES, _XLMR_PAD, _XLMR_BOS, _XLMR_EOS
 
 
+_TOKEN_KEYS = ("src_tokens", "src_offsets", "tgt_tokens", "tgt_offsets")
+
+
+def _open_tokens(path):
+    """Open one token shard. `path` is either an unpacked directory (members
+    memory-mapped, O(1) RAM) or a legacy .npz (fully read into RAM)."""
+    if os.path.isdir(path):
+        d = {k: np.load(os.path.join(path, k + ".npy"), mmap_mode="r",
+                        allow_pickle=False) for k in _TOKEN_KEYS}
+        d["n_pairs"] = np.load(os.path.join(path, "n_pairs.npy"), allow_pickle=False)
+        d["lang_code"] = np.load(os.path.join(path, "lang_code.npy"), allow_pickle=False)
+        return d
+    with np.load(path, allow_pickle=False) as z:
+        if "src_offsets" not in z:
+            raise ValueError(f"{path} is old object-array format; re-run "
+                             f"build_opus100_corpus.py for packed int32.")
+        return {k: np.asarray(z[k]) for k in _TOKEN_KEYS + ("n_pairs", "lang_code")}
+
+
+def _open_sem(sem_dir, lang):
+    """(src_sem, tgt_sem) for one language: unpacked fp16 .npy (mmap) preferred,
+    `<lang>_en.sem.npz` fallback (read into RAM)."""
+    d = os.path.join(sem_dir, f"{lang}_en.sem")
+    if os.path.isdir(d):
+        return (np.load(os.path.join(d, "src_sem.npy"), mmap_mode="r", allow_pickle=False),
+                np.load(os.path.join(d, "tgt_sem.npy"), mmap_mode="r", allow_pickle=False))
+    spath = os.path.join(sem_dir, f"{lang}_en.sem.npz")
+    if not os.path.exists(spath):
+        raise FileNotFoundError(
+            f"semantic targets {d}/ or {spath} missing — run "
+            f"cerebras/precompute_opus_semantic.py, then cerebras/unpack_opus.sh.")
+    with np.load(spath, allow_pickle=False) as z:
+        return np.asarray(z["src_sem"]), np.asarray(z["tgt_sem"])
+
+
 def _scan_shards(root_dir, short_codes, langs):
-    """Return [(lang_short, n_pairs, path)] for each *_en.npz shard, validated
-    against the packed-int32 format and the known language set."""
-    shards = sorted(glob.glob(os.path.join(root_dir, "*_en.npz")))
+    """Return [(lang_short, n_pairs, path)] for each shard — an unpacked
+    `<lang>_en/` directory (preferred) or a `<lang>_en.npz` — validated against
+    the packed-int32 format and the known language set."""
+    dirs = sorted(d for d in glob.glob(os.path.join(root_dir, "*_en"))
+                  if os.path.isdir(d))
+    npzs = sorted(glob.glob(os.path.join(root_dir, "*_en.npz")))
+    have_dir = {os.path.basename(d) for d in dirs}
+    shards = dirs + [z for z in npzs
+                     if os.path.basename(z)[:-len(".npz")] not in have_dir]
     if langs is not None:
         keep = set(langs)
         shards = [s for s in shards
-                  if os.path.basename(s).split("_en.npz")[0] in keep]
+                  if os.path.basename(s).split("_en")[0] in keep]
     if not shards:
-        raise FileNotFoundError(f"No *_en.npz shards found in {root_dir}")
+        raise FileNotFoundError(f"No *_en/ dirs or *_en.npz shards found in {root_dir}")
     lang_to_idx = {c: i for i, c in enumerate(short_codes)}
     meta = []
     for path in shards:
-        with np.load(path, allow_pickle=False) as d:
-            if "src_offsets" not in d:
-                raise ValueError(f"{path} is old object-array format; re-run "
-                                 f"build_opus100_corpus.py for packed int32.")
-            lang = str(d["lang_code"])
-            n = int(d["n_pairs"])
+        d = _open_tokens(path)
+        lang = str(d["lang_code"])
+        n = int(d["n_pairs"])
         if lang not in lang_to_idx:
             raise ValueError(f"shard lang '{lang}' not in short_codes {short_codes}")
         meta.append((lang, n, path))
@@ -87,7 +139,8 @@ def _fix_len(seq, T, pad, eos):
 def make_opus_input_fn(opus_dir, seq_len, batch_size, num_steps,
                        parallel_corpus="data/parallel_corpus.npz",
                        seed=42, langs=None, with_semantic=False,
-                       sem_dir=None, d_sem=384, pad=None, token_weight=None):
+                       sem_dir=None, d_sem=384, pad=None, token_weight=None,
+                       max_len=None):
     """Build the cstorch input_fn. `num_steps` batches are produced (plus a small
     buffer). When with_semantic, `<lang>_en.sem.npz` (from precompute_opus_semantic.py)
     must sit in sem_dir (defaults to opus_dir) and carry src_sem/tgt_sem.
@@ -100,7 +153,16 @@ def make_opus_input_fn(opus_dir, seq_len, batch_size, num_steps,
       - label_mask (float pad mask) and, if token_weight is given, token_weight_t
         (= token_weight[labels]) are looked up HOST-side and shipped as (B,T-1)
         float activations rather than wafer-side (V,·) tables.
+
+    max_len: if set, only pairs whose src AND tgt (ids incl. BOS/EOS) are both
+    <= max_len are sampled — used to train at a short --seq-len without
+    truncating (~70% of every 64-slot row is padding; 82% of pairs fit 32).
     """
+    # Absolute paths: this closure is pickled to the appliance worker pods,
+    # whose working directory is not the repo.
+    opus_dir = os.path.abspath(opus_dir)
+    sem_dir = os.path.abspath(sem_dir or opus_dir)
+    parallel_corpus = os.path.abspath(parallel_corpus) if parallel_corpus else None
     meta_short, meta_pad, bos, eos = load_meta(parallel_corpus)
     short_codes = meta_short
     if pad is None:
@@ -109,33 +171,45 @@ def make_opus_input_fn(opus_dir, seq_len, batch_size, num_steps,
                        if token_weight is not None else None)
     shard_meta, lang_to_idx = _scan_shards(opus_dir, short_codes, langs)
     en_idx = lang_to_idx["en"]
-    sem_dir = sem_dir or opus_dir
+    if with_semantic:                      # fail at construction, not on a worker
+        for lang, _, _ in shard_meta:
+            _open_sem(sem_dir, lang)
 
-    # Lazy per-shard caches (mmap'd token arrays; loaded sem arrays).
+    # Lazy per-shard caches (mmap'd views; built inside the worker process).
     tok_cache, sem_cache = {}, {}
 
     def _tokens(path):
         if path not in tok_cache:
-            tok_cache[path] = dict(np.load(path, mmap_mode="r", allow_pickle=False))
+            tok_cache[path] = _open_tokens(path)
         return tok_cache[path]
 
-    def _sem(path):
-        if path not in sem_cache:
-            base = os.path.basename(path).replace("_en.npz", "_en.sem.npz")
-            spath = os.path.join(sem_dir, base)
-            if not os.path.exists(spath):
-                raise FileNotFoundError(
-                    f"semantic targets {spath} missing — run "
-                    f"cerebras/precompute_opus_semantic.py (with_semantic=True).")
-            with np.load(spath, allow_pickle=False) as d:
-                sem_cache[path] = (np.asarray(d["src_sem"], dtype=np.float32),
-                                   np.asarray(d["tgt_sem"], dtype=np.float32))
-        return sem_cache[path]
+    elig_cache = {}
+
+    def _eligible(path, d):
+        """Row indices of this shard that fit max_len on both sides (cached)."""
+        if path not in elig_cache:
+            so, to = np.asarray(d["src_offsets"]), np.asarray(d["tgt_offsets"])
+            longest = np.maximum(np.diff(so), np.diff(to))
+            elig_cache[path] = np.flatnonzero(longest <= max_len)
+        return elig_cache[path]
+
+    def _sem(lang):
+        if lang not in sem_cache:
+            sem_cache[lang] = _open_sem(sem_dir, lang)
+        return sem_cache[lang]
 
     n_shards = len(shard_meta)
 
+    def _worker_rank():
+        """Rank among the appliance's streaming workers (0 off-appliance)."""
+        try:
+            import cerebras.pytorch.distributed as cdist
+            return int(cdist.get_streaming_rank())
+        except Exception:
+            return 0
+
     def input_fn():
-        rng = np.random.default_rng(seed)
+        rng = np.random.default_rng(seed + 1000 * _worker_rank())
 
         def gen():
             B, T = batch_size, seq_len
@@ -149,7 +223,11 @@ def make_opus_input_fn(opus_dir, seq_len, batch_size, num_steps,
                     si = int(rng.integers(0, n_shards))
                     lang, n_pairs, path = shard_meta[si]
                     d = _tokens(path)
-                    row = int(rng.integers(0, n_pairs))
+                    if max_len is None:
+                        row = int(rng.integers(0, n_pairs))
+                    else:
+                        elig = _eligible(path, d)
+                        row = int(elig[rng.integers(0, len(elig))])
                     so, to = d["src_offsets"], d["tgt_offsets"]
                     x_ids = np.asarray(d["src_tokens"][so[row]:so[row + 1]])
                     en_ids = np.asarray(d["tgt_tokens"][to[row]:to[row + 1]])
@@ -163,13 +241,15 @@ def make_opus_input_fn(opus_dir, seq_len, batch_size, num_steps,
                     src[i] = _fix_len(s_ids, T, pad, eos)
                     tgt[i] = _fix_len(t_ids, T, pad, eos)
                     if with_semantic:                   # target = MiniLM(source)
-                        src_sem, tgt_sem = _sem(path)
-                        sem[i] = tgt_sem[row] if swap else src_sem[row]
+                        src_sem, tgt_sem = _sem(lang)
+                        sem[i] = tgt_sem[row] if swap else src_sem[row]  # fp16 -> fp32
                 # Host-side AR shift + int32. dec_in/labels are (B, T-1); labels
                 # stays un-sliced downstream so its embedding lookup lowers.
                 dec_in = tgt[:, :-1].astype(np.int32)
                 labels = tgt[:, 1:].astype(np.int32)
-                label_mask = (labels != pad).astype(np.float16)
+                # Host-side floats are fp32: the graph casts to its half dtype
+                # (bf16 on the CS-3; see train_cstorch --half-dtype).
+                label_mask = (labels != pad).astype(np.float32)
                 batch = {
                     "src_ids": torch.from_numpy(src.astype(np.int32)),
                     "dec_in": torch.from_numpy(np.ascontiguousarray(dec_in)),
@@ -179,7 +259,7 @@ def make_opus_input_fn(opus_dir, seq_len, batch_size, num_steps,
                     "tgt_lang_id": torch.from_numpy(tlang.astype(np.int32)),
                 }
                 if token_weight_np is not None:
-                    tw = token_weight_np[labels].astype(np.float16)  # host lookup
+                    tw = token_weight_np[labels].astype(np.float32)  # host lookup
                     batch["token_weight_t"] = torch.from_numpy(np.ascontiguousarray(tw))
                 if with_semantic:
                     batch["sem_target"] = torch.from_numpy(sem)

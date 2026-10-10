@@ -25,6 +25,7 @@ the input pipeline (raw generator vs torch DataLoader) is the culprit.
 """
 import argparse
 import os
+import sys
 
 import torch
 import torch.nn.functional as F
@@ -32,6 +33,9 @@ import torch.nn.functional as F
 import cerebras.pytorch as cstorch
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+from cerebras.cs_common import add_cluster_args, make_backend  # noqa: E402
 
 
 def main():
@@ -74,7 +78,11 @@ def main():
                          "logits fit?' without entangling the CE design.")
     ap.add_argument("--compile-only", action="store_true",
                     help="Compile without executing — cheap capacity probing.")
+    add_cluster_args(ap, default_label=None, default_job_time_sec=3600)
     args = ap.parse_args()
+    if args.job_label is None:
+        args.job_label = ("name=minprobe" if args.model == "mlp"
+                          else f"name=minprobe-{args.model}")
 
     if args.model == "vqvae":
         return run_vqvae(args)
@@ -98,11 +106,7 @@ def main():
 
     # Same cluster-config shape train_cstorch uses (mgmt/creds come from the
     # ALCF user node's /opt/cerebras/config_v2).
-    cluster_config = cstorch.distributed.ClusterConfig(
-        num_csx=1, job_labels=["name=minprobe"], job_time_sec=3600,
-        mount_dirs=[REPO_ROOT], python_paths=[REPO_ROOT],
-    )
-    backend = cstorch.backend("CSX", cluster_config=cluster_config)
+    backend = make_backend(args)
 
     model = MLP()
     compiled_model = cstorch.compile(model, backend)
@@ -199,11 +203,7 @@ def run_attn(args):
     model.train()
     print("minimal_probe: model=attn (bare nn.TransformerEncoder)")
 
-    cluster_config = cstorch.distributed.ClusterConfig(
-        num_csx=1, job_labels=["name=minprobe-attn"], job_time_sec=3600,
-        mount_dirs=[REPO_ROOT], python_paths=[REPO_ROOT],
-    )
-    backend = cstorch.backend("CSX", cluster_config=cluster_config)
+    backend = make_backend(args)
     compiled_model = cstorch.compile(model, backend)
     optimizer = cstorch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
 
@@ -296,11 +296,7 @@ def run_attn2(args):
     model.train()
     print("minimal_probe: model=attn2 (hand-written attention, no SDPA)")
 
-    cluster_config = cstorch.distributed.ClusterConfig(
-        num_csx=1, job_labels=["name=minprobe-attn2"], job_time_sec=3600,
-        mount_dirs=[REPO_ROOT], python_paths=[REPO_ROOT],
-    )
-    backend = cstorch.backend("CSX", cluster_config=cluster_config)
+    backend = make_backend(args)
     compiled_model = cstorch.compile(model, backend)
     optimizer = cstorch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
 
@@ -424,12 +420,7 @@ def run_cehead(args):
     model = CEHead()
     model.train()
 
-    cluster_config = cstorch.distributed.ClusterConfig(
-        num_csx=1, job_labels=["name=minprobe-cehead"], job_time_sec=3600,
-        mount_dirs=[REPO_ROOT], python_paths=[REPO_ROOT],
-    )
-    backend = cstorch.backend("CSX", compile_only=args.compile_only,
-                              cluster_config=cluster_config)
+    backend = make_backend(args, compile_only=args.compile_only)
     compiled_model = cstorch.compile(model, backend)
     optimizer = cstorch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
 
@@ -499,12 +490,7 @@ def run_vqvae(args):
     print(f"minimal_probe: logits will be ({B}, {T}, {vocab}) = "
           f"{B*T*vocab*2/2**30:.3f} GiB in f16")
 
-    cluster_config = cstorch.distributed.ClusterConfig(
-        num_csx=1, job_labels=["name=minprobe-vqvae"], job_time_sec=3600,
-        mount_dirs=[REPO_ROOT], python_paths=[REPO_ROOT],
-    )
-    backend = cstorch.backend("CSX", compile_only=args.compile_only,
-                              cluster_config=cluster_config)
+    backend = make_backend(args, compile_only=args.compile_only)
     compiled_model = cstorch.compile(model, backend)
     optimizer = cstorch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
 

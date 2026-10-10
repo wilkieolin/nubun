@@ -168,8 +168,15 @@ class VQVAE(nn.Module):
         sem_pred = None
         len_pred = None
         if self.use_semantic_head or self.use_length_head:
-            mask_f = mem_mask.unsqueeze(-1).to(z_q.dtype)          # (B, M, 1)
-            pooled = (z_q * mask_f).sum(dim=1) / mask_f.sum(dim=1).clamp(min=1.0)
+            if self.use_stop_mask:
+                mask_f = mem_mask.unsqueeze(-1).to(z_q.dtype)      # (B, M, 1)
+                pooled = (z_q * mask_f).sum(dim=1) / mask_f.sum(dim=1).clamp(min=1.0)
+            else:
+                # mem_mask is all-ones here, so the masked mean IS the mean.
+                # Spelled as z_q.mean so the CS-3 compiler never sees a reduce
+                # over a constant-only (data-independent) tensor
+                # (CS3_BRINGUP §3: constant-only subgraphs have no placement).
+                pooled = z_q.mean(dim=1)
             if self.use_semantic_head:
                 sem_pred = self.semantic_head(pooled)              # (B, d_semantic)
             if self.use_length_head:

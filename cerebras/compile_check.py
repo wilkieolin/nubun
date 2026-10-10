@@ -140,7 +140,11 @@ def main():
         recon = (nll * m).sum() / m.sum().clamp(min=1.0)
         loss = recon + out["vq_losses"]["commit"] + out["vq_losses"]["codebook"]
         if out["sem_pred"] is not None:
-            cos = F.cosine_similarity(out["sem_pred"].float(), sem_target.float(), dim=-1)
+            # explicit primitives (== F.cosine_similarity; see train_cstorch.cosine_sim)
+            a, b = out["sem_pred"].float(), sem_target.float()
+            den = (torch.sqrt((a * a).sum(-1)).clamp(min=1e-8)
+                   * torch.sqrt((b * b).sum(-1)).clamp(min=1e-8))
+            cos = (a * b).sum(-1) / den
             loss = loss + args.lambda_sem * (1.0 - cos).mean()
         loss.backward()
         optimizer.step()
