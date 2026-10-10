@@ -19,7 +19,9 @@ Frozen recipe to reproduce (E3@100k winner): RVQ 8x128, tied emb, deep decoder
 (d_ff 2048, n_dec 10), lr 3e-4 cosine, warmup 500, lambda_sem 5, weighted CE.
 """
 import argparse
+import glob
 import os
+import re
 import sys
 
 import torch
@@ -156,7 +158,10 @@ def build_input_fn(args, vocab, token_weight=None):
     return make_opus_input_fn(
         opus_dir=args.opus_dir, seq_len=args.seq_len, batch_size=args.batch_size,
         num_steps=exec_steps(args), parallel_corpus=args.parallel_corpus,
-        seed=args.seed, langs=langs, with_semantic=not args.no_semantic,
+        # + start_step: a resumed segment draws a fresh sample stream instead of
+        # replaying segment 1's (the graph seed, torch.manual_seed, is unchanged).
+        seed=args.seed + getattr(args, "start_step", 0),
+        langs=langs, with_semantic=not args.no_semantic,
         sem_dir=args.sem_dir, pad=args.pad_token_id, token_weight=token_weight,
         max_len=args.seq_len if args.fit_seq_len else None)
 
@@ -218,6 +223,11 @@ def main():
     ap.add_argument("--no-token-weights", action="store_true")
     ap.add_argument("--log-every", type=int, default=100)
     ap.add_argument("--ckpt-every", type=int, default=20000)
+    ap.add_argument("--keep-ckpts", type=int, default=0,
+                    help="keep only the newest K .mdl checkpoints in --out-dir (0 = keep all)")
+    ap.add_argument("--keep-every", type=int, default=0,
+                    help="with --keep-ckpts: never prune checkpoints whose step is a "
+                         "multiple of this (milestones to roll back to)")
     ap.add_argument("--resume", default=None,
                     help="Checkpoint (.mdl from this script) to continue from: "
                          "restores model, optimizer, LR schedule and step count. "
@@ -402,6 +412,15 @@ def main():
                  "lr_scheduler": lr_scheduler.state_dict(), "step": step}
         cstorch.save(state, f"{args.out_dir}/nubun_cs_step{step}.mdl")
         print(f"  checkpoint saved: step {step}")
+        if args.keep_ckpts > 0:
+            # /home quota is tight (~1.6 GB per checkpoint with AdamW state).
+            old = sorted(glob.glob(f"{args.out_dir}/nubun_cs_step*.mdl"),
+                         key=lambda f: int(re.search(r"step(\d+)\.mdl$", f).group(1)))
+            for f in old[:-args.keep_ckpts]:
+                if args.keep_every and int(re.search(r"step(\d+)\.mdl$", f).group(1)) % args.keep_every == 0:
+                    continue          # milestone: never pruned
+                os.remove(f)
+                print(f"  pruned old checkpoint {os.path.basename(f)}")
 
     dataloader = cstorch.utils.data.DataLoader(
         build_input_fn(args, vocab, token_weight))
