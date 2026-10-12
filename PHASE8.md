@@ -14,7 +14,6 @@ Gold (translation) ceiling on this split = **0.861**.
 | model | real cross | notes |
 |-------|-----------|-------|
 | gold (translation ceiling) | 0.861 | upper bound |
-| **CS-3 B=128 @ 500k** (`long-b128-20261010T042150Z`) | **0.582** | same arch as E3, wafer port; B=128 lr 6e-4, 500k steps — see cerebras/CS3_BRINGUP §7 5f |
 | **E3 @ 100k — FROZEN WINNER** | **0.435** | RVQ 8×128, tied emb, deep decoder |
 | shallow continuous ceiling (no-VQ) | 0.430 | Phase 6 unfrozen+cosine |
 | E2 — RVQ 8×128, tied, deep | 0.417 | cooler-LR 100k schedule |
@@ -194,3 +193,27 @@ emerges robustly from en-centric data + the semantic loss. Stage 2 (downloading
 a real multi-parallel corpus) was gated on Stage 1 helping, so it is not pursued.
 
 FINAL: C1 (d_model 512, gentle cosine-130k) remains the frozen winner at 0.5045.
+
+## Update — CS-3: E3's architecture, 5x the training, round-trip 0.582
+
+The CS-3 port (`cerebras/`, CS3_BRINGUP.md) trained E3's architecture (d_model 384,
+RVQ 8x128, tied, deep decoder; trainable embeddings) on the wafer for **500k steps
+at B=128**, lr 6e-4 (sqrt-scaled), warmup 500 then cosine over 500k
+(`cerebras/runs/long_b128.sh`; three ~23 h segments, 46 h wall, ~375 samples/s).
+
+| model | real cross | shuffle-gap |
+|-------|-----------|-------------|
+| gold (translation ceiling) | 0.861 | |
+| **CS-3 B=128 @ 500k** (`model_dir/long-b128-20261010T042150Z/nubun_cs_step500000`) | **0.582** | +0.538 |
+| C1 — d512, gentle cosine-130k (previous frozen winner) | 0.5045 | +0.454 |
+| E3 @ 100k | 0.435 | |
+
+**0.582 beats C1 by +0.078 (+15% rel) at the narrower d_model 384.** Training
+length/batch was the bigger lever: E3's architecture with 64M samples (vs 3.2M at
+B=32x100k) clears both E3 and the d512 width gain. Confounded: batch, LR, steps
+and the wafer graph (lang tag added to every memory slot, no output bias) all
+changed together. Eval note: the `.eval.pt` needs the wafer-port `vqvae/` (this
+branch/main), not the `gb10-scaleup` code C1 was trained with.
+
+Open: C1's width (d_model 512, now merged as `d_emb` decouple) on the wafer at
+the same length; round-trip of the 100k/250k checkpoints for a length curve.

@@ -547,9 +547,9 @@ wrapper unpacks `opus100_npy/` once). Every mode: `logs/<mode>-<stamp>.log`,
    | **real** | 0.6114 | **0.5824** |
    | shuffle | 0.0438 | 0.0443 |
    | zero | 0.0644 | 0.0643 |
-   Shuffle-gap cross **+0.538**. **0.582 vs E3's 0.435 (+34%)**, and above the
-   shallow continuous ceiling (0.430): the CS-3 500k B=128 run is the new best
-   model. Codes carry the meaning (shuffle/zero ≈ 0.05).
+   Shuffle-gap cross **+0.538**. **0.582 vs C1's 0.5045 (the GB10 frozen winner,
+   d_model 512) and E3's 0.435**: the CS-3 500k B=128 run is the new best model,
+   at d_model 384. Codes carry the meaning (shuffle/zero ≈ 0.05).
 6. ~~Round-trip~~ — DONE for `m1` step 500: `cerebras/export_ckpt.py`
    loads the `.mdl`, rebuilds VQVAE exactly as `roundtrip_eval.py` does, loads
    strict (0 missing / 0 unexpected), writes `<mdl>.eval.pt`; CPU recon on 4
