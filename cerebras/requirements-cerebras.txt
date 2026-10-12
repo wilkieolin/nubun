@@ -6,7 +6,7 @@
 #
 # Pin cerebras-pytorch to the version matching the CS-3 cluster's software stack
 # (ask the cluster admin / check `csctl` — client and appliance versions must match).
-cerebras_pytorch      # == <MATCH THE CLUSTER RELEASE, e.g. 2.5.0>
+cerebras_pytorch==2.10.0   # == ALCF release R_2.10.0 (Oct 2026); client and appliance must match
 numpy
 # transformers/torch come in as cerebras_pytorch deps; only needed standalone for
 # the offline semantic-target precompute (precompute_semantic_targets.py), which

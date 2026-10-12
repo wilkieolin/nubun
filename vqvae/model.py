@@ -41,6 +41,13 @@ class VQVAE(nn.Module):
         n_rvq_levels: int = 4,
         tie_embeddings: bool = False,     # Phase 8 E1: share enc/dec token_emb (one XLM-R table)
         d_emb: int | None = None,         # Phase 8 B: embedding dim (pinned 384); if != d_model, project
+        # Phase 8 CS-3: exact sequence lengths. Sizing the positional tables to
+        # exactly T keeps the position add on the wafer — any in-graph row select
+        # fails to lower (see SinusoidalPositionalEmbedding). src_len = encoder
+        # input T; tgt_len = DECODER INPUT T (tgt-1 under pre_shifted), defaults
+        # to src_len. Leave both None off-wafer for variable-length input.
+        src_len: int | None = None,
+        tgt_len: int | None = None,
     ):
         super().__init__()
         # Phase 8 B: decouple the transformer width (d_model) from the pretrained
@@ -61,7 +68,7 @@ class VQVAE(nn.Module):
             vocab_size=vocab_size, d_model=d_model, d_code=d_code,
             n_enc_layers=n_enc_layers, n_heads=n_heads, d_ff=d_ff,
             m_max=m_max, dropout=dropout, pad_token_id=pad_token_id,
-            embedding_table=embedding_table, d_emb=d_emb,
+            embedding_table=embedding_table, d_emb=d_emb, seq_len=src_len,
         )
         if use_rvq:
             self.quantizer = ResidualVectorQuantizer(
@@ -83,7 +90,7 @@ class VQVAE(nn.Module):
                 vocab_size=vocab_size, n_langs=n_langs, d_model=d_model,
                 d_code=d_code, n_dec_layers=n_dec_layers, n_heads=n_heads,
                 d_ff=d_ff, dropout=dropout, pad_token_id=pad_token_id,
-                embedding_table=embedding_table, d_emb=d_emb,
+                embedding_table=embedding_table, d_emb=d_emb, seq_len=tgt_len or src_len,
             )
         # Phase 8 E1: tie encoder and decoder input embeddings to a single table.
         # The two separate XLM-R copies (~96M each) dominated trainable params;
@@ -168,8 +175,15 @@ class VQVAE(nn.Module):
         sem_pred = None
         len_pred = None
         if self.use_semantic_head or self.use_length_head:
-            mask_f = mem_mask.unsqueeze(-1).to(z_q.dtype)          # (B, M, 1)
-            pooled = (z_q * mask_f).sum(dim=1) / mask_f.sum(dim=1).clamp(min=1.0)
+            if self.use_stop_mask:
+                mask_f = mem_mask.unsqueeze(-1).to(z_q.dtype)      # (B, M, 1)
+                pooled = (z_q * mask_f).sum(dim=1) / mask_f.sum(dim=1).clamp(min=1.0)
+            else:
+                # mem_mask is all-ones here, so the masked mean IS the mean.
+                # Spelled as z_q.mean so the CS-3 compiler never sees a reduce
+                # over a constant-only (data-independent) tensor
+                # (CS3_BRINGUP §3: constant-only subgraphs have no placement).
+                pooled = z_q.mean(dim=1)
             if self.use_semantic_head:
                 sem_pred = self.semantic_head(pooled)              # (B, d_semantic)
             if self.use_length_head:
@@ -183,6 +197,7 @@ class VQVAE(nn.Module):
             w_full = tgt_body.shape[1]
             out_len = (tgt_body != self.pad_token_id).sum(dim=1).clamp(min=1)
             logits = self.decoder(z_q, mem_mask, out_len, tgt_lang_id)  # (B, T, V), T=out_len.max()
+            dec_h = None  # NAT decoder does not expose h; CS-3 lookup CE is AR-only
             if logits.shape[1] < w_full:
                 # Pad time dim to full target width so the existing loss alignment
                 # holds; padded positions map to pad targets and are ignored by CE.
@@ -196,9 +211,10 @@ class VQVAE(nn.Module):
                 drop = (torch.rand_like(dec_in, dtype=torch.float) < word_dropout) & \
                        (dec_in != self.pad_token_id)
                 dec_in = torch.where(drop, torch.full_like(dec_in, mask_token_id), dec_in)
-            logits = self.decoder(z_q, mem_mask, dec_in, tgt_lang_id)
+            logits, dec_h = self.decoder(z_q, mem_mask, dec_in, tgt_lang_id)
         return {
             "logits": logits,
+            "dec_h": dec_h,   # (B,T,d_emb) post-out_norm(+out_proj), for the CS-3 lookup CE
             "indices": indices,
             "z_e": z_e,
             "z_q": z_q,

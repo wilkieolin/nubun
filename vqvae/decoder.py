@@ -10,8 +10,14 @@ from vqvae import cs_attention
 
 
 class SinusoidalPositionalEmbedding(nn.Module):
-    # max_len only needs to cover the training seq_len (<=64); kept small so the
-    # one-hot select matmul below stays cheap.
+    """Adds sinusoidal positions to (B, T, d).
+
+    See the twin in vqvae/encoder.py for why the table must be sized EXACTLY to
+    T on the CS-3: every in-graph row select (slice / embedding-gather / one-hot
+    matmul) either asserts in slice_filter, has no valid layout, or lands on
+    GlobalHost with no matmul kernel. max_len == T reduces it to a broadcast-add.
+    """
+
     def __init__(self, d_model: int, max_len: int = 512):
         super().__init__()
         pe = torch.zeros(max_len, d_model)
@@ -23,16 +29,12 @@ class SinusoidalPositionalEmbedding(nn.Module):
         self.register_buffer("pe", pe, persistent=False)  # (max_len, d), constant
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Select rows 0..T-1 of the pe table via a one-hot matmul. Alternatives
-        # both fail on the WSE: pe[:, :T] is a buffer slice (slice_filter kernel
-        # asserts), and F.embedding(arange, pe) streams the arange as an i64 index
-        # (act_host_to_wse) that has no valid layout. onehot @ pe == pe[:T], using
-        # arange only in a compare (the RVQ one-hot pattern that lowers) + a matmul.
         T = x.size(1)
-        rows = torch.arange(T, device=x.device).unsqueeze(1)              # (T,1)
-        cols = torch.arange(self.pe.size(0), device=x.device).unsqueeze(0)  # (1,max_len)
-        onehot = (rows == cols).to(x.dtype)                              # (T,max_len)
-        return x + (onehot @ self.pe).unsqueeze(0)                       # (1,T,d) bcast
+        assert T <= self.pe.size(0), \
+            f"seq_len {T} exceeds positional table {self.pe.size(0)}"
+        if T == self.pe.size(0):
+            return x + self.pe.unsqueeze(0)      # (1,T,d) bcast — the WSE path
+        return x + self.pe[:T].unsqueeze(0)      # off-wafer only (in-graph slice)
 
 
 class Decoder(nn.Module):
@@ -59,6 +61,7 @@ class Decoder(nn.Module):
         pad_token_id: int = 1,
         embedding_table: torch.Tensor | None = None,
         d_emb: int | None = None,
+        seq_len: int | None = None,
     ):
         super().__init__()
         self.pad_token_id = pad_token_id
@@ -79,7 +82,24 @@ class Decoder(nn.Module):
             self.token_emb.weight.requires_grad = False
         self.emb_proj = nn.Linear(d_emb, d_model) if d_emb != d_model else None
         self.out_proj = nn.Linear(d_model, d_emb) if d_emb != d_model else None
-        self.pos = SinusoidalPositionalEmbedding(d_model)
+        # seq_len is the DECODER INPUT length (tgt_len-1 under pre_shifted), not
+        # the raw target length. See SinusoidalPositionalEmbedding.
+        self.pos = SinusoidalPositionalEmbedding(d_model, max_len=seq_len or 512)
+
+        # Causal mask as a constant WEIGHT rather than an in-graph compare.
+        # Both operands of `cols > rows` are aranges, so the mask is fully
+        # data-independent; on the CS-3 the compiler then tries to stream it from
+        # the host as an i64 activation, and i64 activations have no valid layout
+        # ("SelectLanesAndLayout failed: StreamFromActHost has no valid layouts").
+        # Materializing it here puts it in weight memory instead. Stored as float
+        # because cs_attention consumes it as `mask * _MASK_NEG` and cast it to
+        # scores.dtype anyway — so this is numerically identical to the bool mask.
+        if seq_len is not None:
+            _r = torch.arange(seq_len).view(-1, 1)
+            _c = torch.arange(seq_len).view(1, -1)
+            self.register_buffer("causal_mask", (_c > _r).float(), persistent=False)
+        else:
+            self.causal_mask = None  # off-wafer: built per-forward from T
 
         self.lang_emb = nn.Embedding(n_langs, d_model)
         self.bottleneck_proj = nn.Linear(d_code, d_model)
@@ -93,9 +113,11 @@ class Decoder(nn.Module):
             num_layers=n_dec_layers)
         self.out_norm = cs_attention.LayerNorm(d_model)  # explicit-ops LayerNorm
 
-        # Output projection ties to embedding table (parameter sharing).
-        # We keep a separate bias so the frozen emb table stays untouched.
-        self.out_bias = nn.Parameter(torch.zeros(vocab_size))
+        # Output projection ties to the (frozen) embedding table. There is no
+        # output bias on the CS-3: a trainable per-vocab bias needs a ScatterNd
+        # backward into its weight, which has no WAF kernel, and it cannot fold
+        # into the frozen token_emb (partial-freeze = slice, Class B). A tied
+        # softmax without an output bias is standard. See CS3_BRINGUP §3/§5.
 
     def forward(
         self,
@@ -127,13 +149,19 @@ class Decoder(nn.Module):
         tgt_emb = self.pos(tgt_emb)
         tgt_pad_mask = target_ids == self.pad_token_id
 
-        # Causal mask (True = disallowed, strictly above the diagonal). Built via
-        # an arange compare rather than torch.triu: cstorch's triu decomposition
-        # does arithmetic on the input and rejects a bool tensor. col > row is the
-        # identical upper-triangular (excl. diagonal) mask in pure static ops.
-        _rows = torch.arange(T, device=device).view(-1, 1)
-        _cols = torch.arange(T, device=device).view(1, -1)
-        causal_mask = _cols > _rows
+        # Causal mask (disallowed = strictly above the diagonal). Precomputed as a
+        # float weight buffer when seq_len is known (required on the CS-3 — see
+        # __init__). Off-wafer it is built here from an arange compare rather than
+        # torch.triu, whose cstorch decomposition does arithmetic on the input and
+        # rejects a bool tensor.
+        if self.causal_mask is not None:
+            assert T == self.causal_mask.size(0), \
+                f"decoder input T={T} != seq_len {self.causal_mask.size(0)}"
+            causal_mask = self.causal_mask
+        else:
+            _rows = torch.arange(T, device=device).view(-1, 1)
+            _cols = torch.arange(T, device=device).view(1, -1)
+            causal_mask = _cols > _rows
 
         h = self.decoder(
             tgt=tgt_emb,
@@ -151,5 +179,10 @@ class Decoder(nn.Module):
         # transposed/sliced weight parameter to the WSE (same class as the QKV
         # weight-split issue). Numerically identical. With d_emb != d_model, h has
         # been projected back to d_emb by out_proj above, so this matches W.
-        logits = F.linear(h, self.token_emb.weight, self.out_bias)  # (B, T, V)
-        return logits
+        logits = F.linear(h, self.token_emb.weight)  # (B, T, V), tied, no bias
+        # Return h (post-out_norm, the exact projection input) so the CS-3 CE can
+        # form the target logit as (h · emb[label]) by a FROZEN embedding lookup
+        # instead of gathering a row out of the (B,T,V) logits — see
+        # cerebras/train_cstorch.weighted_ce. logits[i,label] == h_i·emb[label]
+        # exactly, because the projection is tied and biasless.
+        return logits, h

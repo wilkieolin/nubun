@@ -41,6 +41,11 @@ def compute_target_len(src_ids, pad, ratio, slack, m_max):
 
 
 @torch.no_grad()
+def _logits(out):
+    """The CS-3 port's AR decoder returns (logits, h); the pre-port one returns logits."""
+    return out[0] if isinstance(out, tuple) else out
+
+
 def embed(st_model, ids, pad):
     """Mean-pool MiniLM last_hidden_state over non-pad tokens. (B, H)."""
     attn = (ids != pad).long()
@@ -80,7 +85,7 @@ def generate(model, z_q, mem_mask, lang_t, bos, eos, pad, max_len, device):
     ids = torch.full((B, 1), bos, dtype=torch.long, device=device)
     finished = torch.zeros(B, dtype=torch.bool, device=device)
     for _ in range(max_len - 1):
-        logits = model.decoder(z_q, mem_mask, ids, lang_t)   # (B, t, V)
+        logits = _logits(model.decoder(z_q, mem_mask, ids, lang_t))   # (B, t, V)
         nxt = logits[:, -1].argmax(-1)
         nxt = torch.where(finished, torch.full_like(nxt, pad), nxt)
         ids = torch.cat([ids, nxt.unsqueeze(1)], dim=1)
@@ -123,7 +128,7 @@ def generate_nat(model, z_q, mem_mask, lang_t, src_len, bos, pad, max_len):
     """Single parallel forward for the NAT decoder. No gold length at inference, so
     the output grid length is estimated from source length (clamped)."""
     out_len = src_len.clamp(min=1, max=max_len)
-    logits = model.decoder(z_q, mem_mask, out_len, lang_t)   # (B, T, V)
+    logits = _logits(model.decoder(z_q, mem_mask, out_len, lang_t))   # (B, T, V)
     ids = logits.argmax(-1)                                  # (B, T)
     T = ids.shape[1]
     ar = torch.arange(T, device=ids.device).unsqueeze(0)
