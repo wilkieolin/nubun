@@ -524,6 +524,20 @@ wrapper unpacks `opus100_npy/` once). Every mode: `logs/<mode>-<stamp>.log`,
    `model_dir/m2-20261009T171835Z/nubun_cs_step100000.eval.pt` (m2).
    Untested levers left: vocab compaction (117k used ids), both wafers
    (`--num-csx 2`) for a final long run.
+5f. **Weekend run — DONE 2026-10-12**: B=128, lr 6e-4, T=64, 500k steps (64M
+   samples, cosine scoped to 500k), `cerebras/runs/long_b128.sh` →
+   `model_dir/long-b128-20261010T042150Z/`. Three ~23 h segments chained by
+   `--resume` (0→240k, 240k→480k, 480k→500k), all rc=0, no retries, compile
+   cache hit on every resume; ~2.9 steps/s (~375 samples/s), 46 h wall total.
+   CPU recon on the same 16 fixed batches:
+   | step | 100k | 250k | 480k | **500k** |
+   |---|---|---|---|---|
+   | recon | 3.77 | 3.27 | 2.81 | **2.79** |
+   (m2 B=32 @100k: 4.58.) Wafer-logged 10-point recon at the end ≈ 3.0–3.1; each
+   segment restarts the data stream with a new seed, so small bumps at the
+   joins are expected. Milestones kept every 50k; `.eval.pt` written for
+   100k/250k/480k/500k. **Next:** `roundtrip_eval.py` on the GB10 for
+   `nubun_cs_step500000.eval.pt` vs E3's 0.435.
 6. ~~Round-trip~~ — DONE for `m1` step 500: `cerebras/export_ckpt.py`
    loads the `.mdl`, rebuilds VQVAE exactly as `roundtrip_eval.py` does, loads
    strict (0 missing / 0 unexpected), writes `<mdl>.eval.pt`; CPU recon on 4
