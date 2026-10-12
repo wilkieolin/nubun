@@ -14,6 +14,7 @@ Gold (translation) ceiling on this split = **0.861**.
 | model | real cross | notes |
 |-------|-----------|-------|
 | gold (translation ceiling) | 0.861 | upper bound |
+| **CS-3 B=128 @ 500k** (`long-b128-20261010T042150Z`) | **0.582** | same arch as E3, wafer port; B=128 lr 6e-4, 500k steps — see cerebras/CS3_BRINGUP §7 5f |
 | **E3 @ 100k — FROZEN WINNER** | **0.435** | RVQ 8×128, tied emb, deep decoder |
 | shallow continuous ceiling (no-VQ) | 0.430 | Phase 6 unfrozen+cosine |
 | E2 — RVQ 8×128, tied, deep | 0.417 | cooler-LR 100k schedule |

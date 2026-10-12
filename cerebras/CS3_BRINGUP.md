@@ -536,8 +536,20 @@ wrapper unpacks `opus100_npy/` once). Every mode: `logs/<mode>-<stamp>.log`,
    (m2 B=32 @100k: 4.58.) Wafer-logged 10-point recon at the end ≈ 3.0–3.1; each
    segment restarts the data stream with a new seed, so small bumps at the
    joins are expected. Milestones kept every 50k; `.eval.pt` written for
-   100k/250k/480k/500k. **Next:** `roundtrip_eval.py` on the GB10 for
-   `nubun_cs_step500000.eval.pt` vs E3's 0.435.
+   100k/250k/480k/500k.
+   **Round-trip (GB10, 2026-10-12)** — `roundtrip_eval.py --combine-splits --langs
+   en,zh,es,fr,ar,ru --max-gen-len 48`, same seeded 200-sentence split (gold cross
+   0.8614), run from a worktree of this branch (the wafer port changed the math —
+   lang tag added to every memory slot, readout-query seeding — so the `.eval.pt`
+   needs this branch's `vqvae/`, not the pre-port code):
+   | condition | same | cross |
+   |---|---|---|
+   | **real** | 0.6114 | **0.5824** |
+   | shuffle | 0.0438 | 0.0443 |
+   | zero | 0.0644 | 0.0643 |
+   Shuffle-gap cross **+0.538**. **0.582 vs E3's 0.435 (+34%)**, and above the
+   shallow continuous ceiling (0.430): the CS-3 500k B=128 run is the new best
+   model. Codes carry the meaning (shuffle/zero ≈ 0.05).
 6. ~~Round-trip~~ — DONE for `m1` step 500: `cerebras/export_ckpt.py`
    loads the `.mdl`, rebuilds VQVAE exactly as `roundtrip_eval.py` does, loads
    strict (0 missing / 0 unexpected), writes `<mdl>.eval.pt`; CPU recon on 4
