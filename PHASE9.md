@@ -300,3 +300,96 @@ Decision fed: do models compute more cheaply or more faithfully over codes?
   interlingua is not data-limited, but the glyph inventory may still be
   English-shaped. The NSM/Swadesh comparison in D4 and the per-language nPMI
   stability in A3 are the checks.
+
+## 7. Workstream A results (2026-10-13)
+
+Infrastructure first: pre-port checkpoints (E3, C1) give different codes under
+main's `vqvae/` (the port seeds the readout queries with the encoder mean), so
+`vqvae_select.py` runs them on a pre-port worktree (`../nubun_preport`,
+`origin/gb10-scaleup`); it reproduces §2's E3 and 500k audit rows exactly.
+Decoding on the GB10 must run under `scripts/mem_watchdog.sh`: greedy decode at
+chunk 1024 grew to 66 GB through allocator fragmentation (chunk 512 with
+`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` peaks at 10.5 GB).
+
+### A3 + A6: compositionality (`compositionality_metrics.py`)
+
+All 2009 FLORES sentences x 10 languages (held out from opus100). Attributes
+labelled on the English side (spaCy + keyword lists) and copied across the
+parallel languages: negation, tense, subject person, subject number, lexical
+field, and five named-entity presence flags. Controls: attributes shuffled at
+sentence level; meaning or code rows permuted. Level-0 numbers (excess = real
+minus shuffle):
+
+| level 0 | E3 @100k | C1 @130k | CS-3 @500k |
+|---|---|---|---|
+| posdis excess (slot specialises to one attribute) | +0.008 | +0.017 | **+0.027** |
+| bosdis excess (code count specialises) | **+0.020** | +0.018 | +0.009 |
+| MIG, bag / positional | 0.049 / 0.022 | 0.033 / 0.014 | 0.021 / 0.002 |
+| topsim, bag Jaccard vs MiniLM (perm ~0) | **0.20** | 0.19 | 0.13 |
+| TRE, additive, held-out 1-R^2 (perm 1.00) | **0.86** | 0.88 | 0.90 |
+| nPMI cross-language stability r (shuffled) | 0.57 (0.50) | 0.60 (0.50) | **0.67 (0.59)** |
+| A6 level-0 bag Jaccard real / chance / kappa | 0.41 / 0.19 / 0.28 | 0.42 / 0.18 / 0.30 | 0.59 / 0.33 / **0.38** |
+| A6 same code in same slot, real / chance / kappa | 0.37 / 0.10 / 0.30 | 0.44 / 0.09 / 0.38 | 0.53 / 0.10 / **0.48** |
+| A6 depth-2 stack prefix bag kappa | 0.10 | 0.11 | 0.12 |
+| decode-probe codes strong in >=3 languages (A1) | **55** | 19 | 17 |
+
+What this says:
+
+- **The gate (A3) points to keeping ordered RVQ, on a weak signal.** With more
+  training the code moves from bag-like (E3: bosdis > posdis) to positional
+  (500k: posdis 3x bosdis), and the same slot carries the same level-0 code
+  across translations 53% of the time (chance 10%, kappa 0.48). Slot position
+  is part of the interlingua, which bag-of-codes Jaccard could not see. The
+  absolute disentanglement values are small: FLORES sentences are long (36
+  tokens) and the attributes are coarse sentence-level properties.
+- **Compositionality in the topsim/TRE sense is weak and falling.** Additive
+  composition from the attributes explains 10-14% of the pooled code vector,
+  and topographic similarity falls from 0.20 (E3) to 0.13 (500k) while
+  round-trip rises from 0.435 to 0.582. Better reconstruction is being bought
+  with a less geometric, more positional code. Property 4 is not established;
+  workstream C (held-out combinations, substitution) is the real test.
+- **Depth > 2 is not interlingual.** Stack-prefix agreement across languages
+  falls from kappa 0.38 at depth 1 to 0.12 at depth 2 and 0.04 at depth 3:
+  levels 2-7 carry language-specific surface detail. This supports B2's cut
+  (radical = levels 0-1, everything deeper optional) and suggests the glyph
+  layer should not render levels >= 2 at all.
+- MI estimates on stack prefixes of depth >= 3 saturate (nearly every slot is a
+  unique symbol; real ~ shuffle) and should be ignored.
+
+### A1: radical inventory of the 500k model
+
+`results/cs3_500k_codebook_L{0,1,2}.txt` (64 samples x 10 languages per code).
+Clean cross-lingual radicals at level 0: SHE (3: 她 / her / Elle / Ela / Она),
+WOMEN (50: женщин / Frauen / femmes / 女性), NEGATION "No" (58: No / Не / Non),
+NEVER (66: Nunca / jamais / never), 1sg (71: me / tenho / могу / Je), 2nd person
+(105: você / tu), HONORIFIC (93: Herr / Sr / M), DATE (55, 79: 年 / 月 / 日 /
+numerals), URL (76: http). Level 1 has one clean code, THREE (40: 3 / três /
+tres / three / 三), a number modifier; levels 1-2 are otherwise uninterpretable
+in isolation, as expected for residual levels.
+
+- **The probe undercounts the 500k model.** It decodes random 3-16-slot code
+  sequences; the 500k decoder only ever saw 64 heavily duplicated slots. 17
+  codes are strong in >= 3 languages (C1 19, E3 55). In-distribution nPMI (A3)
+  agrees with the probe on function words (negation 66/107 "any", 2nd person
+  105, plural 20 they/their) but finds topical radicals the probe cannot see
+  (health 96/73, politics 113/16, disaster 42, numbers 30): content radicals
+  are readable only in context. A probe that substitutes codes into real
+  encodings (C2) is the right inventory tool for this model.
+- **Fillers identified.** Codes 43 (present in 100% of encodings, always the
+  same slot), 29 (85%), 118 (71%), 75 (63%), 99 (40%) and 49 (27%) sit in one
+  fixed slot each and decode to nothing consistent. These are §2's
+  near-constant slots: structure, not meaning, and the first thing a
+  variable-length bottleneck (B1) should remove.
+- The heaviest-used content codes (91, 14, 45, 127, 101; 4-6% of slot mass
+  each) also decode to noise under the probe; 101 is the top nPMI code for
+  past tense and for the person, organisation and time entity flags at once, i.e. a generic
+  "news event" radical.
+
+### A2: round-trip length curve
+
+Running (100k / 250k / 480k, plus 500k as a protocol check against 0.582).
+
+### Not started in A
+
+A4 (cross-seed stability) needs two wafer runs; A5 (code prior) needs a code
+dump of the opus100 training corpus with the 500k encoder.
