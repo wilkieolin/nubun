@@ -217,3 +217,23 @@ branch/main), not the `gb10-scaleup` code C1 was trained with.
 
 Open: C1's width (d_model 512, now merged as `d_emb` decouple) on the wafer at
 the same length; round-trip of the 100k/250k checkpoints for a length curve.
+
+## Update — 2026-10-12 review: interlingua and code usage of the 500k model
+
+Encoder-only measurements on the seeded FLORES split (200 sentences x 10
+languages; `crosslingual_consistency.py` with all 10 languages, and the new
+`code_usage_audit.py`). Full table and interpretation in `PHASE9.md` §2.
+
+| metric | E3 @100k | CS-3 @500k |
+|---|---|---|
+| interlingua Jaccard real / chance / lift | 0.420 / 0.181 / +0.239 | 0.600 / 0.322 / +0.278 |
+| distinct level-0 codes per sentence (64 slots) | 14.9 | 8.5 |
+| distinct full 8-level stacks per sentence | 63.5 | 16.7 |
+| level-0 codes active | 127 | 102 |
+
+The 500k model reconstructs better from a far more redundant code: ~47 of the
+64 slots duplicate another slot's stack, and some slot positions are
+near-constant. The bottleneck is effectively ~17 characters per 36-token
+sentence, which motivates the variable-length bottleneck proposed for Phase 9.
+Still open from this section: d_model 512 on the wafer at the 500k recipe, and
+the round-trip length curve from the 100k/250k/480k `.eval.pt` checkpoints.

@@ -1,4 +1,9 @@
-# Nubun — Top Radicals Discovered (Phase 8 winner, C1)
+# Nubun — Top Radicals Discovered (Phase 8 GB10 winner, C1)
+
+> **Note (2026-10-12):** the best model is now the CS-3 500k run (round-trip
+> 0.582, interlingua lift +0.278; see `PHASE8.md` and `PHASE9.md` §2). Its level-0
+> inventory has **not** been decoded yet (`analyze_codebook.py` needs the GB10);
+> that is Phase 9 workstream A1. The inventory below is C1's (0.5045).
 
 Model: `phase8_C1_d512_cos130k_step130000.pt` — Perceiver encoder → **RVQ (8×128)**
 bottleneck → unfrozen-embedding AR decoder, **d_model 512** (widened past the XLM-R
