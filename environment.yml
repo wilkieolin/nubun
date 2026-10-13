@@ -18,4 +18,5 @@ dependencies:
     - ipadic
     - unidic-lite
     - nltk
+    - spacy  # + python -m spacy download en_core_web_sm (PHASE9 A3 attributes)
     - hdbscan

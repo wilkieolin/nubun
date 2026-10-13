@@ -171,6 +171,8 @@ def batched_greedy_decode(model, z_q: torch.Tensor, mem_mask: torch.Tensor,
 
     for _ in range(max_len):
         logits = model.decoder(z_q, mem_mask, out, lang_ids)
+        if isinstance(logits, tuple):  # the CS-3 port's AR decoder returns (logits, h)
+            logits = logits[0]
         next_tok = logits[:, -1, :].argmax(dim=-1)
         # Once finished, keep emitting pad (will be filtered out at counting time)
         next_tok = torch.where(finished, torch.full_like(next_tok, pad_id), next_tok)
