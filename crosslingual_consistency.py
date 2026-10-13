@@ -21,6 +21,8 @@ from itertools import combinations
 import numpy as np
 import torch
 
+import vqvae_select
+vqvae_select.select_from_argv()  # pre-port checkpoints need pre-port vqvae/
 from vqvae.data import combined_split, load_corpus
 from vqvae.model import VQVAE
 
@@ -70,7 +72,7 @@ def main():
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = p.parse_args()
 
-    ckpt = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+    ckpt = vqvae_select.load_checkpoint(args.checkpoint)
     cfg = ckpt["args"]
     print(f"Checkpoint: {args.checkpoint} ({ckpt['step']} steps)")
 

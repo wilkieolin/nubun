@@ -27,6 +27,8 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer
 
+import vqvae_select
+vqvae_select.select_from_argv()  # pre-port checkpoints need pre-port vqvae/
 from vqvae.data import load_corpus, ParallelDataset, make_collate
 from vqvae.model import VQVAE
 
@@ -229,7 +231,7 @@ def main():
     args = parser.parse_args()
 
     print(f"Loading checkpoint: {args.checkpoint}")
-    ckpt = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+    ckpt = vqvae_select.load_checkpoint(args.checkpoint)
     cfg = ckpt["args"]
     print(f"  trained for {ckpt['step']} steps")
 

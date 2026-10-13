@@ -21,6 +21,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+import vqvae_select
+vqvae_select.select_from_argv()  # pre-port checkpoints need pre-port vqvae/
 from vqvae.data import combined_split, load_corpus
 from vqvae.model import VQVAE
 
@@ -75,7 +77,7 @@ def main():
     p.add_argument("--seed", type=int, default=42)
     a = p.parse_args()
 
-    ck = torch.load(a.checkpoint, map_location="cpu", weights_only=False)
+    ck = vqvae_select.load_checkpoint(a.checkpoint)
     cfg = ck["args"]
     dev_ids, devtest_ids, dev_lens, devtest_lens, meta = load_corpus(a.corpus)
     _, val_ids, _, _ = combined_split(dev_ids, devtest_ids, dev_lens, devtest_lens, 0.1, a.seed)
