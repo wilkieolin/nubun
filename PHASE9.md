@@ -538,7 +538,60 @@ What this says:
   one for models in the clustering regime, its slot view for the radical
   regime.
 
+### A5: bits per sentence under a code prior (`dump_codes.py`, `code_prior.py`)
+
+2.1M opus100 sentences (200k pairs per shard, X side plus a de-duplicated 25%
+of English sides) encoded with the 500k encoder; train/test split by
+translation pair (a translation in train would leak the test meaning, since
+the codes are language-independent); FLORES (2009 x 10) as out-of-domain test.
+The same causal transformer (6 layers, d 384, 30k steps x 64 sentences, no
+language tag) is trained on each stream: code stacks truncated to depth d,
+slot-major, or the sentences' own XLM-R tokens (vocabulary compacted to the
+101k types seen in training; unseen test tokens charged log2 p(UNK) plus a
+uniform choice among the 148k unseen types). Round-trip from A2.
+
+| stream | bits/sent, opus test | bits/sent, FLORES | x text (FLORES) | round-trip | % of gold |
+|---|---|---|---|---|---|
+| text (XLM-R tokens) | 164.7 | 378.8 | 1.00 | lossless | - |
+| code, levels 0-1 (raw 896 bits) | **48.7** | **82.5** | 0.22 | 0.346 | 40% |
+| code, levels 0-3 (raw 1792) | 117.7 | 199.3 | 0.53 | 0.478 | 55% |
+| code, levels 0-7 (raw 3584) | 280.2 | 484.3 | 1.28 | 0.583 | 68% |
+
+FLORES per language, levels 0-3 code: 182 (zh) to 210 (hi), spread 15%;
+text: 300 (en) to 426 (ru), spread 42%.
+
+What this says:
+
+- **The full code fails §5's substrate criterion.** Under a learned prior the
+  complete 8-level stack costs 1.3x (FLORES) to 1.7x (opus) the bits of the
+  text it encodes, and it is lossy. As it stands the code is not a compressed
+  format; it is an expansion with a discrete interface.
+- **The shallow code is a genuine compression, at a fidelity cost.** Levels
+  0-1 cost a fifth of the text's bits and keep 40% of the gold ceiling; levels
+  0-3 cost half and keep 55%. The marginal price rises steeply: depth 2 -> 4
+  costs 117 bits for +0.13 round-trip, depth 4 -> 8 costs 285 bits for +0.10.
+  The deep levels are the expensive, language-dependent part (A6), and they
+  are where most of the bits go.
+- **The prior sees the redundancy §2 measured.** 64 x 2 slots at 7 bits are
+  896 raw bits; the prior needs 49-83. Most slots are predictable from the
+  others (fillers and duplicated stacks), so the dense layout is not where
+  the cost is; a variable-length bottleneck (B1) would mainly change the
+  representation, not the bit count.
+- **Code cost is nearly language-independent; text cost is not.** The same
+  meaning costs within 15% across ten languages as code and within 42% as
+  text. That is the interlingua seen as a bit count.
+- **What would make the substrate case.** A code whose rate-distortion curve
+  passes below text at useful fidelity: either the deep levels become
+  interlingual (B3 pressure on levels 1-7) so they compress across languages,
+  or fidelity at depth <= 4 rises (B2 quantizer dropout trains the shallow
+  levels to carry more). Both are measured by re-running this script, which
+  now gives every B experiment a rate-distortion point.
+- Caveats: the priors were still improving slowly at 30k steps (d8 281 ->
+  280 over the last 5k), equally for all streams; the text stream is scored
+  losslessly while the code is scored at its own fidelity, so "equal
+  fidelity" is not reached by any row; a lossy text baseline (for example a
+  summariser at matched round-trip) is the missing comparison.
+
 ### Not started in A
 
-A5 (code prior) needs a code dump of the opus100 training corpus with the
-500k encoder.
+None. A4's cross-seed comparison is waiting on the two 50k seed runs.
