@@ -143,6 +143,8 @@ how many bits does a sentence really need?
 4. **Cross-seed stability**: two short runs on the wafer with different seeds;
    Hungarian-match level-0 codebooks and report the fraction of radicals that
    recur. Locatello's warning applies to us until this is done.
+   *Started 2026-10-13:* `codebook_stability.py` written and validated
+   (§2b); the within-run drift result is in; two 50k seed runs are training.
 5. **Bits per sentence under a code prior**: train a small autoregressive
    transformer over the 500k model's code sequences (on the GB10) and report
    bits/sentence, versus a byte-level or token-level LM at equal round-trip
@@ -389,7 +391,65 @@ in isolation, as expected for residual levels.
 
 Running (100k / 250k / 480k, plus 500k as a protocol check against 0.582).
 
+### A4: cross-seed stability (`codebook_stability.py`) — in flight
+
+CPU, §2's seeded split (200 sentences x 10 languages). Two checkpoints
+encode the same 2000 sentences; per RVQ level, codes are compared in a
+**slot view** (k x k contingency table, Hungarian matching, fraction of slots
+that agree under the best one-to-one relabelling) and a slot-agnostic
+**sentence view** (each code's footprint is the set of sentences it occurs
+in; Hungarian on pairwise Jaccard; a radical "recurs" when its matched partner
+shares >= 0.5 of its sentences). Chance for every number is the same statistic
+with B's sentences rolled by one. Before running it across seeds, we ran it
+along the 500k run itself, every checkpoint against the final one:
+
+| level-0, vs the 500k checkpoint | 480k | 250k | 100k | 50k | chance |
+|---|---|---|---|---|---|
+| slot agreement under best relabelling | **0.891** | 0.612 | 0.452 | 0.359 | 0.14-0.19 |
+| NMI | 0.865 | 0.622 | 0.515 | 0.458 | 0.27-0.35 |
+| mean matched sentence-Jaccard (active codes) | 0.740 | 0.418 | 0.272 | 0.207 | 0.08-0.13 |
+| fraction of active radicals that recur (J >= 0.5) | **0.973** | 0.329 | 0.082 | 0.068 | 0.01-0.04 |
+| slot mass carried by recurring radicals | 0.99 | 0.41 | 0.11 | 0.08 | - |
+
+(Active = taking >= 0.1% of slots: 73 codes at 500k. Level 1 recurrence is
+0.92 at 480k and 0.03 at 250k; levels 2-7 fall off faster.)
+
+What this says:
+
+- **The radical inventory keeps turning over until the learning rate is near
+  its floor.** Half-way through the run, two thirds of the level-0 radicals
+  the final model uses did not yet exist as the same sentence-footprints; at
+  100k steps, more than 90% did not. The 100k checkpoint is not an early
+  draft of the 500k inventory, it is a different inventory of similar size.
+  Only in the last 20k steps (LR within 10% of its floor) is the inventory
+  essentially fixed (97% recurrence, Hungarian returns the identity).
+- **Consequence for A4.** Two independent short runs cannot be expected to
+  agree with each other more than a run agrees with its own past, so a
+  cross-seed number at 50k steps is a lower bound on what converged runs
+  would share, and a converged cross-seed test needs full-length runs. The
+  within-run drift is itself the first stability result: whatever the
+  radicals are, they are a property of the end-point of the schedule, not of
+  the data alone. Any RADICALS.md inventory must name the checkpoint.
+- **Consequence for the hierarchy.** Level 0 stabilises first and levels 1-7
+  later and less, consistent with coarse-to-fine, but at 250k even level 1 is
+  almost entirely re-drawn. The levels are not independently stable
+  components. This matches A6 above: depth >= 2 is neither interlingual nor
+  stable in time, so the radical is levels 0-1 at most.
+- **The fillers are the most stable codes.** Of A1's six fixed-slot fillers,
+  43 (the always-present one) is already in place at 50k (J 0.71) and 43, 75,
+  29, 99 and 49 all recur at 250k (J 0.64-0.83) when only 28% of the content
+  radicals do; a slot that always holds the same code recurs trivially.
+  Excluding fillers, level-0 recurrence is 0.970 / 0.284 / 0.060 / 0.060 at
+  480k / 250k / 100k / 50k. Filler 118 does not track its own past (J 0.56
+  even at 480k), so it is not a fixed slot in the same sense.
+
+Cross-seed runs in flight (2026-10-13): two 50k-step runs, seeds 1 and 2,
+otherwise the B=128 recipe with a 50k cosine
+(`cerebras/runs/seed_pair.sh`, `model_dir/seed{1,2}-b128-20261013T221048Z`).
+They will be compared with each other and with the long run's own 50k
+checkpoint (seed 42, long schedule, LR still near peak).
+
 ### Not started in A
 
-A4 (cross-seed stability) needs two wafer runs; A5 (code prior) needs a code
-dump of the opus100 training corpus with the 500k encoder.
+A5 (code prior) needs a code dump of the opus100 training corpus with the
+500k encoder.
