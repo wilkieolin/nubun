@@ -3,19 +3,24 @@
 # 3.2M samples), one wafer, TOTAL steps with one cosine over the whole run,
 # segments under the 23 h job cap chained with --resume, retries on failure.
 #   setsid nohup cerebras/runs/long_b128.sh > logs/long_b128.out 2>&1 &
+#   SEED=2 setsid nohup cerebras/runs/long_b128.sh > logs/long_b128_seed2.out 2>&1 &
+# SEED (default 42, the Oct 10-12 run) seeds init, dropout and the data stream;
+# a second seed is Phase 9 A4's converged cross-seed test.
 set -u
 cd "$(dirname "$0")/../.."
 TOTAL=${TOTAL:-500000}          # 64M samples (~20x m2), ~45 h at ~400 samples/s
 SEG=${SEG:-240000}              # steps per job (~21 h)
-OUT=${OUT:-$PWD/model_dir/long-b128-$(date -u +%Y%m%dT%H%M%SZ)}
+SEED=${SEED:-42}
+TAG=long-b128; [[ "$SEED" != 42 ]] && TAG=long-b128-seed$SEED
+OUT=${OUT:-$PWD/model_dir/$TAG-$(date -u +%Y%m%dT%H%M%SZ)}
 mkdir -p "$OUT"
 ARGS=(--batch-size 128 --lr 6e-4 --steps "$TOTAL" --warmup-steps 500
       --ckpt-every 10000 --keep-ckpts 3 --keep-every 50000 --log-every 1000
-      --out-dir "$OUT" --job-label name=nubun-long-b128)
+      --seed "$SEED" --out-dir "$OUT" --job-label "name=nubun-$TAG")
 latest() { ls "$OUT"/nubun_cs_step*.mdl 2>/dev/null \
            | sed -E 's/.*step([0-9]+)\.mdl$/\1 &/' | sort -n | tail -1 | cut -d' ' -f2; }
 step_of() { sed -E 's/.*step([0-9]+)\.mdl$/\1/' <<<"$1"; }
-echo "=== $(date -u) start TOTAL=$TOTAL SEG=$SEG OUT=$OUT"
+echo "=== $(date -u) start TOTAL=$TOTAL SEG=$SEG SEED=$SEED OUT=$OUT"
 fails=0
 while :; do
   CK=$(latest); START=0; [[ -n "$CK" ]] && START=$(step_of "$CK")
