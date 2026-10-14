@@ -143,8 +143,9 @@ how many bits does a sentence really need?
 4. **Cross-seed stability**: two short runs on the wafer with different seeds;
    Hungarian-match level-0 codebooks and report the fraction of radicals that
    recur. Locatello's warning applies to us until this is done.
-   *Started 2026-10-13:* `codebook_stability.py` written and validated
-   (§2b); the within-run drift result is in; two 50k seed runs are training.
+   *Done 2026-10-14 (§7 A4):* 9% of level-0 radicals recur across seeds at
+   50k steps, but 50k models are in a sentence-clustering regime; a converged
+   cross-seed test needs a second 500k run with a new seed.
 5. **Bits per sentence under a code prior**: train a small autoregressive
    transformer over the 500k model's code sequences (on the GB10) and report
    bits/sentence, versus a byte-level or token-level LM at equal round-trip
@@ -391,7 +392,7 @@ in isolation, as expected for residual levels.
 
 Running (100k / 250k / 480k, plus 500k as a protocol check against 0.582).
 
-### A4: cross-seed stability (`codebook_stability.py`) — in flight
+### A4: cross-seed stability (`codebook_stability.py`) — done 2026-10-14
 
 CPU, §2's seeded split (200 sentences x 10 languages). Two checkpoints
 encode the same 2000 sentences; per RVQ level, codes are compared in a
@@ -419,8 +420,9 @@ What this says:
 - **The radical inventory keeps turning over until the learning rate is near
   its floor.** Half-way through the run, two thirds of the level-0 radicals
   the final model uses did not yet exist as the same sentence-footprints; at
-  100k steps, more than 90% did not. The 100k checkpoint is not an early
-  draft of the 500k inventory, it is a different inventory of similar size.
+  100k steps, more than 90% did not. The 100k checkpoint has a similar
+  number of active codes but they are not the 500k symbols (the cross-seed
+  analysis below shows why: they are coarser, sentence-level ancestors).
   Only in the last 20k steps (LR within 10% of its floor) is the inventory
   essentially fixed (97% recurrence, Hungarian returns the identity).
 - **Consequence for A4.** Two independent short runs cannot be expected to
@@ -443,11 +445,68 @@ What this says:
   480k / 250k / 100k / 50k. Filler 118 does not track its own past (J 0.56
   even at 480k), so it is not a fixed slot in the same sense.
 
-Cross-seed runs in flight (2026-10-13): two 50k-step runs, seeds 1 and 2,
-otherwise the B=128 recipe with a 50k cosine
-(`cerebras/runs/seed_pair.sh`, `model_dir/seed{1,2}-b128-20261013T221048Z`).
-They will be compared with each other and with the long run's own 50k
-checkpoint (seed 42, long schedule, LR still near peak).
+**Cross-seed runs** (2026-10-13/14): two 50k-step runs, seeds 1 and 2,
+otherwise the B=128 recipe with a 50k cosine (`cerebras/runs/seed_pair.sh`,
+`model_dir/seed{1,2}-b128-20261013T221048Z`, ~5 h each on one wafer; final
+training recon 4.21 / 4.26, the long run at its own 50k: 4.15). Level 0,
+active codes 65 (seed 1) / 58 (seed 2) / 66 (long @50k):
+
+| level 0 | **seed 1 vs seed 2** | seed 1, 50k vs 40k | seed 2, 50k vs 40k | seed 1 vs long @50k | seed 2 vs long @50k | seed 1 / 2 vs long @500k |
+|---|---|---|---|---|---|---|
+| slot agreement, best relabelling (chance) | **0.422** (0.145) | 0.826 | 0.827 | 0.442 | 0.393 | 0.370 / 0.337 |
+| NMI (chance) | **0.516** (0.260) | 0.797 | 0.786 | 0.531 | 0.494 | 0.430 / 0.407 |
+| mean matched sentence-Jaccard (chance) | **0.232** (0.070) | 0.628 | 0.586 | 0.273 | 0.250 | 0.226 / 0.212 |
+| active radicals that recur, J >= 0.5 (chance) | **0.092** (0.000) | 0.785 | 0.707 | 0.138 | 0.103 | 0.062 / 0.017 |
+
+Level 1 across seeds: slot agreement 0.244 (chance 0.116), recurrence 0.018.
+Levels >= 2: nothing recurs. Development of level 0 along the long run
+(`code_usage_audit.py`), distinct level-0 codes per 64-slot sentence:
+
+| checkpoint | seed 1 @50k | seed 2 @50k | long @50k | long @100k | long @250k | long @500k |
+|---|---|---|---|---|---|---|
+| distinct level-0 codes per sentence | 2.3 | 2.3 | 2.5 | 4.0 | 5.9 | 8.5 |
+| distinct full stacks per sentence | 11.2 | 11.1 | 14.1 | 14.7 | 15.1 | 16.7 |
+
+What this says:
+
+- **At 50k steps, two seeds share about 9% of their level-0 inventory, where
+  the same run 10k steps apart shares 71-79%.** Taken at face value this is
+  Locatello's result: which codes exist is a property of the seed. The
+  agreement is not zero (slot agreement 0.42 against 0.15 chance, NMI 0.52
+  against 0.26), so the two inventories are correlated, but they are not the
+  same set of symbols. A 50k run with a different seed resembles the long run
+  at 50k (0.14 / 0.10) and at 500k (0.06 / 0.02) no better than it resembles
+  the other seed.
+- **But level 0 at 50k is not yet a radical inventory; it is a sentence
+  clustering.** A 50k model writes 2.3 distinct level-0 codes per sentence,
+  typically one code in ~50 of the 64 slots: the level-0 code is a label for
+  the whole sentence. The codes that do recur across seeds are exactly the
+  ones that isolate the same small set of sentences in all 10 languages (e.g.
+  seed-1 code 103 and seed-2 code 123: 7 sentence ids, 39 of 42 occurrences
+  shared, 3-6 per language; code 41 and 126: 84 sentence ids, 278 of 380
+  shared). The interlingua is present at level 0 before any radicals are: the
+  two seeds agree on *which sentences are alike*, not on a symbol set.
+- **The within-run drift (§ above) is differentiation, not relabelling.** The
+  distinct-codes-per-sentence count grows monotonically, 2.5 to 4.0 to 5.9 to
+  8.5 over the 500k run: sentence-cluster codes split into slot-level radicals
+  as the learning rate falls. The 100k inventory recurs at 8% in the 500k
+  model because the 500k radicals are mostly its descendants, not because the
+  model keeps redrawing its symbols at random. The radical regime (fillers in
+  fixed slots plus ~8 content radicals per sentence) exists only late in the
+  schedule.
+- **Consequence.** The cross-seed question that matters for RADICALS.md, "do
+  two converged runs learn the same radicals?", cannot be answered with short
+  runs: they have no radicals to compare. It needs a second 500k run with a
+  different seed (one wafer, ~45 h, the existing `long_b128.sh` with
+  `--seed`). Until then, every inventory claim names its checkpoint and is
+  understood to be seed-specific. The result also sharpens B1: a
+  variable-length bottleneck should be introduced late or with the code
+  already in the radical regime, since a model in the one-code-per-sentence
+  regime would simply shorten to one slot.
+- `codebook_stability.py` is the tool for any later pair, including E3 vs C1
+  on the pre-port worktree (`vqvae_select`); its sentence view is the right
+  one for models in the clustering regime, its slot view for the radical
+  regime.
 
 ### Not started in A
 
