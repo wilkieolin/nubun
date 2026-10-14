@@ -57,14 +57,28 @@ def embed(st_model, ids, pad):
 
 
 @torch.no_grad()
-def bottleneck(model, src_t, pad, ratio, slack):
-    """Encode+quantize+length-cap, mirroring VQVAE.forward. Returns z_q, mem_mask."""
+def truncated_rvq(quantizer, z_e, depth):
+    """Greedy RVQ keeping only levels 0..depth-1 (PHASE9 A5/B2 rate-distortion)."""
+    flat = z_e.reshape(-1, quantizer.d_code)
+    res, zq = flat, torch.zeros_like(flat)
+    for cb in list(quantizer.codebooks)[:depth]:
+        d = (res ** 2).sum(1, keepdim=True) + (cb ** 2).sum(1)[None] - 2 * F.linear(res, cb)
+        q = cb[d.argmin(1)]
+        zq, res = zq + q, res - q
+    return zq.view_as(z_e)
+
+
+def bottleneck(model, src_t, pad, ratio, slack, depth=None):
+    """Encode+quantize+length-cap, mirroring VQVAE.forward. Returns z_q, mem_mask.
+    depth: keep only the first `depth` RVQ levels (None = all)."""
     z_e = model.encoder(src_t)
     if getattr(model, "no_vq", False):
         z_q = z_e
         mem_mask = torch.ones(z_e.shape[:2], dtype=torch.bool, device=z_e.device)
     else:
         z_q, indices, _, _ = model.quantizer(z_e)
+        if depth is not None:
+            z_q = truncated_rvq(model.quantizer, z_e, depth)
         if ratio > 0:
             tl = compute_target_len(src_t, pad, ratio, slack, model.encoder.m_max)
             indices = model.quantizer.force_stop_at(indices, tl)
@@ -141,7 +155,7 @@ def generate_nat(model, z_q, mem_mask, lang_t, src_len, bos, pad, max_len):
 
 @torch.no_grad()
 def roundtrip_condition(model, st_model, val_ids, langs, meta, device,
-                        ratio, slack, cond, max_gen_len, batch_size):
+                        ratio, slack, cond, max_gen_len, batch_size, depth=None):
     """Mean round-trip cosine for one condition, split same/cross lang."""
     pad, bos, eos = meta.pad_token_id, meta.bos_token_id, meta.eos_token_id
     agg = {"same": [0.0, 0], "cross": [0.0, 0]}   # sum_cos, count
@@ -161,7 +175,7 @@ def roundtrip_condition(model, st_model, val_ids, langs, meta, device,
                 src_t = src_t.to(device)
                 lang_t = torch.full((src_t.size(0),), t, dtype=torch.long, device=device)
 
-                z_q, mem_mask = bottleneck(model, src_t, pad, ratio, slack)
+                z_q, mem_mask = bottleneck(model, src_t, pad, ratio, slack, depth)
                 if cond == "zero":
                     z_q = torch.zeros_like(z_q)
                 elif cond == "shuffle":
@@ -202,6 +216,8 @@ def main():
     p.add_argument("--batch-size", type=int, default=16)
     p.add_argument("--max-gen-len", type=int, default=48)
     p.add_argument("--conditions", default="real,shuffle,zero")
+    p.add_argument("--rvq-depth", type=int, default=None,
+                   help="decode from only the first d RVQ levels (rate-distortion)")
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = p.parse_args()
 
@@ -256,11 +272,12 @@ def main():
           f"(same=identity~1.0 sanity; cross=translation ceiling)")
 
     print(f"\nFree-generation round-trip meaning (langs={args.langs}, "
-          f"max_gen_len={args.max_gen_len})")
+          f"max_gen_len={args.max_gen_len}, rvq_depth={args.rvq_depth or 'all'})")
     res = {}
     for c in conds:
         res[c] = roundtrip_condition(model, st, val_ids, langs, meta, args.device,
-                                     ratio, slack, c, args.max_gen_len, args.batch_size)
+                                     ratio, slack, c, args.max_gen_len, args.batch_size,
+                                     args.rvq_depth)
         print(f"  {c:8s}  same={res[c]['same']:.4f}  cross={res[c]['cross']:.4f}")
 
     if "real" in res:

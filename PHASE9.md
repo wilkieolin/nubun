@@ -351,11 +351,14 @@ What this says:
   round-trip rises from 0.435 to 0.582. Better reconstruction is being bought
   with a less geometric, more positional code. Property 4 is not established;
   workstream C (held-out combinations, substitution) is the real test.
-- **Depth > 2 is not interlingual.** Stack-prefix agreement across languages
-  falls from kappa 0.38 at depth 1 to 0.12 at depth 2 and 0.04 at depth 3:
-  levels 2-7 carry language-specific surface detail. This supports B2's cut
-  (radical = levels 0-1, everything deeper optional) and suggests the glyph
-  layer should not render levels >= 2 at all.
+- **Depth >= 2 is not interlingual, but it is not surface detail either.**
+  Stack-prefix agreement across languages falls from kappa 0.38 at depth 1 to
+  0.12 at depth 2 and 0.04 at depth 3, yet dropping levels 2-7 costs 40% of
+  round-trip (A2 below: 0.583 -> 0.346), and cross-lingual output loses as
+  much as same-language output. The deep levels carry meaning, encoded
+  differently depending on the source language. They are where the
+  interlingua is still incomplete, not something the glyph layer can drop;
+  B3 (cross-lingual agreement pressure) should target them, not only level 0.
 - MI estimates on stack prefixes of depth >= 3 saturate (nearly every slot is a
   unique symbol; real ~ shuffle) and should be ignored.
 
@@ -388,9 +391,36 @@ in isolation, as expected for residual levels.
   past tense and for the person, organisation and time entity flags at once, i.e. a generic
   "news event" radical.
 
-### A2: round-trip length curve
+### A2: round-trip length curve, and round-trip by RVQ depth
 
-Running (100k / 250k / 480k, plus 500k as a protocol check against 0.582).
+PHASE8 protocol (`roundtrip_eval.py --combine-splits --langs en,zh,es,fr,ar,ru
+--max-gen-len 48`, seeded 200-sentence split, gold cross 0.861); the 500k
+checkpoint reproduces 0.5824 (0.5828 here, batch 64 instead of 16). New
+`--rvq-depth d` decodes from only the first d levels.
+
+| CS-3 run checkpoint | 100k | 250k | 480k | 500k |
+|---|---|---|---|---|
+| round-trip cross | 0.450 | 0.511 | 0.580 | **0.583** |
+| shuffle-gap cross | +0.405 | +0.465 | +0.532 | +0.536 |
+
+| 500k, decoded from levels 0..d-1 | d=1 | d=2 | d=4 | d=8 |
+|---|---|---|---|---|
+| round-trip cross | 0.235 | 0.346 | 0.478 | 0.583 |
+| round-trip same-language | 0.237 | 0.351 | 0.490 | 0.612 |
+
+- **Round-trip rose steadily and flattened only in the last 20k steps**
+  (+0.003 from 480k to 500k), where the cosine LR reaches its floor; the
+  flattening is the schedule ending, not the model saturating. Together with
+  A4 (the inventory is fixed only in that same window), a longer or
+  higher-floor schedule is still a live lever.
+- **Every level pays.** Each doubling of depth adds about 0.11-0.13
+  round-trip. Level 0 alone carries 40% of the full model's round-trip, levels
+  0-1 59%.
+- Protocol warning: on FLORES devtest (article-ordered, the script's default
+  when `--combine-splits` is omitted) the `shuffle` control rolls each batch by
+  one sentence, so "shuffled" codes come from the neighbouring sentence of the
+  same article: shuffle reads 0.227 there against 0.047 on the seeded split.
+  Always use `--combine-splits`.
 
 ### A4: cross-seed stability (`codebook_stability.py`) — done 2026-10-14
 
