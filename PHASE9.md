@@ -466,7 +466,10 @@ What this says:
   later and less, consistent with coarse-to-fine, but at 250k even level 1 is
   almost entirely re-drawn. The levels are not independently stable
   components. This matches A6 above: depth >= 2 is neither interlingual nor
-  stable in time, so the radical is levels 0-1 at most.
+  stable in time, so the radical is levels 0-1 at most. (It still carries
+  meaning: decoding without levels 2-7 loses 40% of round-trip, A2. The
+  deep levels are unstable, language-dependent detail that the glyph layer
+  must still represent somehow.)
 - **The fillers are the most stable codes.** Of A1's six fixed-slot fillers,
   43 (the always-present one) is already in place at 50k (J 0.71) and 43, 75,
   29, 99 and 49 all recur at 250k (J 0.64-0.83) when only 28% of the content
@@ -592,6 +595,11 @@ What this says:
   fidelity" is not reached by any row; a lossy text baseline (for example a
   summariser at matched round-trip) is the missing comparison.
 
-### Not started in A
+### Still open in A
 
-None. A4's cross-seed comparison is waiting on the two 50k seed runs.
+Only the converged A4 test: a second 500k run with seed 2 was launched on
+2026-10-14 (`cerebras/runs/long_b128.sh` with `SEED=2`, ~45 h). When it lands,
+run `codebook_stability.py` against the seed-42 500k model, and re-run
+`compositionality_metrics.py` and `code_prior.py --depth 2/4` on it, so the
+A3 trend, the A5 rate-distortion points and the A1 radicals each get a
+cross-seed check rather than only the inventory.
