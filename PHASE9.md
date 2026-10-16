@@ -536,6 +536,38 @@ What this says:
   variable-length bottleneck should be introduced late or with the code
   already in the radical regime, since a model in the one-code-per-sentence
   regime would simply shorten to one slot.
+**Interim, seed 2 at 250k (2026-10-15).** The seed-2 500k run reached its
+250k checkpoint (mid-schedule; the seed-42 run has a 250k `.eval.pt` at the
+same learning-rate state), and it is already in the radical regime: 8.5
+distinct level-0 codes per sentence against 5.9 for seed 42 at 250k, a
+fixed-slot filler (code 38, slot 34, 100% of sentences) and a near-constant
+slot (entropy 0.00). Level 0, active codes 75 / 71:
+
+| level 0 | seed 2 @250k vs seed 42 @250k | seed 2 @250k vs seed 42 @500k | (seed 42, 250k vs 500k) |
+|---|---|---|---|
+| slot agreement, best relabelling (chance) | 0.346 (0.128) | 0.318 (0.121) | 0.612 (0.177) |
+| NMI (chance) | 0.397 (0.232) | 0.367 (0.218) | 0.622 (0.330) |
+| mean matched sentence-Jaccard (chance) | 0.301 (0.118) | 0.309 (0.139) | 0.418 (0.109) |
+| active radicals that recur, J >= 0.5 (chance) | **0.133** (0.053) | 0.133 (0.067) | 0.329 (0.041) |
+| slot mass carried by recurring radicals | 0.26 | 0.27 | 0.41 |
+
+- Of the ten seed-2 radicals that recur in seed 42 at 250k, four are the
+  structural codes present in most sentences (seed 2's 88 / 86 / 38 / 89, in
+  98 / 86 / 100 / 87% of sentences, matched to seed 42's 62 / 29 / 27 / 75),
+  and six are content codes used in 1-8% of sentences, several matching
+  radicals A1/A3 named: 41 -> 42 (disaster), 42 -> 73 (health), 64 -> 91 and
+  26 -> 101 (the heavy "news event" / past-tense codes, J 0.46-0.47, just
+  under the threshold).
+- **The fixed-slot filler sits in the same slot in both seeds** (slot 34:
+  seed 2 code 38, seed 42 code 27; seed 42 also has fillers at slot 57 and
+  seed 2's 89 concentrates there). Which slots become fillers looks like a
+  property of the architecture or the readout initialisation, not the seed.
+- Read against the 50k result (9%, clustering regime) and the within-run
+  number (33% for seed 42 between 250k and 500k), 13% with a quarter of the
+  slot mass is a weak but real shared core: structure plus a handful of
+  frequent topical radicals. The converged comparison at 500k is still the
+  one that counts.
+
 - `codebook_stability.py` is the tool for any later pair, including E3 vs C1
   on the pre-port worktree (`vqvae_select`); its sentence view is the right
   one for models in the clustering regime, its slot view for the radical
@@ -597,9 +629,11 @@ What this says:
 
 ### Still open in A
 
-Only the converged A4 test: a second 500k run with seed 2 was launched on
-2026-10-14 (`cerebras/runs/long_b128.sh` with `SEED=2`, ~45 h). When it lands,
-run `codebook_stability.py` against the seed-42 500k model, and re-run
+Only the converged A4 test. The seed-2 500k run (launched 2026-10-14,
+`cerebras/runs/long_b128.sh` with `SEED=2`) is in its second of three
+segments (step 288k at 18:30 UTC on 2026-10-15; finish expected ~14:00 UTC
+2026-10-17). Its 250k checkpoint is compared above. When it lands, run
+`codebook_stability.py` against the seed-42 500k model, and re-run
 `compositionality_metrics.py` and `code_prior.py --depth 2/4` on it, so the
 A3 trend, the A5 rate-distortion points and the A1 radicals each get a
 cross-seed check rather than only the inventory.
