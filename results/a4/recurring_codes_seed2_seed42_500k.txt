@@ -1,0 +1,21 @@
+/tmp/claude-36600/-home-wolinammentorp-code-nubun/32c8b142-b093-4d6c-b186-9190a734a868/scratchpad/slotconc.py:11: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  emb = torch.load(f"{D}/embedding_table.pt", map_location="cpu")
+   A  use% slotconc slot sent% ->    B  use% slotconc slot sent%     J
+  38  1.56     1.00   34   100 ->   43  1.56     1.00   52   100  1.00
+  86  3.50     0.25    4    85 ->   29  1.74     0.76   54    85  0.76
+ 114  1.37     0.02   40     2 ->   35  2.02     0.02    7     3  0.70
+  89  4.71     0.21   35    81 ->   62  1.33     0.82   14    72  0.62
+  33  0.57     0.02   43     1 ->  104  0.54     0.02    0     1  0.61
+  53  4.07     0.25   16    77 ->  118  1.34     0.78   28    67  0.60
+ 120  4.14     0.20   24    53 ->   75  0.97     1.00   57    62  0.60
+  98  2.74     0.38   18    71 ->   27  0.98     1.00   34    63  0.58
+  42  3.66     0.02   62     8 ->   73  4.06     0.02   51     8  0.56
+  49  0.44     0.02   17     1 ->   30  0.55     0.03   12     1  0.54
+ 111  1.32     0.02   55     3 ->   19  1.71     0.02    1     2  0.53
+   3  0.74     0.02    0     1 ->  111  0.59     0.02   49     1  0.52
+  26  2.49     0.12   15    26 ->  101  4.18     0.06   17    20  0.50
+ 102  0.28     0.03   46     1 ->   79  0.08     0.02    0     0  0.50
+   5  0.16     0.02    1     0 ->   60  0.20     0.03   20     0  0.50
+ 101  0.75     0.02   22     1 ->   46  0.65     0.03   20     1  0.45
+A fixed-slot fillers (code, use%, slot, sent%): [(38, 1.56, 34, 100)]
+B fixed-slot fillers (code, use%, slot, sent%): [(43, 1.56, 52, 100), (27, 0.98, 34, 63), (75, 0.97, 57, 62), (99, 0.58, 34, 37), (49, 0.44, 57, 28)]
