@@ -15,26 +15,30 @@ decoder regenerates the sentence in any target language from the codes alone.
 The codes behave as a cross-lingual interlingua: one level-0 code fires for
 "water", another for "we", another for "not", in every language and script.
 
-## Status (2026-10-12)
+## Status (2026-10-16, after Phase 9 workstream A)
 
 | property of the goal | state | evidence |
 |---|---|---|
-| codes carry meaning across languages | **strong** | free-generation round-trip meaning 0.582 of a 0.861 gold ceiling; shuffle-gap +0.538; interlingua Jaccard lift +0.278 on all 45 language pairs |
-| codes are interpretable radicals | **good** | level-0 inventories for E3 and C1 (`RADICALS.md`); the 500k wafer model's inventory is not yet decoded |
-| representation is sparse | **not yet** | 64 fixed slots, 3584 raw bits/sentence; only ~8.5 distinct level-0 codes and ~17 distinct code stacks per sentence are actually used (`PHASE9.md` §2) |
-| radicals compose | **unmeasured** | coarse-to-fine RVQ structure observed qualitatively; no compositionality metric has been run |
-| human-readable glyph layer | **not started** | no rendering, no reading, no legibility test |
-| AI reasoning substrate | **not started** | no language model over codes, no bits-per-sentence of a code prior |
+| codes carry meaning across languages | **strong** | free-generation round-trip meaning 0.582 of a 0.861 gold ceiling; interlingua Jaccard lift +0.278 on all 45 language pairs; same slot, same level-0 code across translations 53% vs 10% chance; code cost varies 15% across languages, text 42% |
+| codes are interpretable radicals | **good, seed-specific** | level-0 inventories (`RADICALS.md`; the 500k model's in `PHASE9.md` §7 A1, decoded on the GB10); but two converged runs differing only in seed share 19% of their level-0 radicals (`PHASE9.md` §7 A4) |
+| representation is sparse | **not yet** | 64 fixed slots, 3584 raw bits/sentence; ~8.5 distinct level-0 codes and ~17 distinct stacks per sentence are used; a learned prior needs 49-83 bits for levels 0-1 |
+| radicals compose | **weak, not established** | the code is positional (keep RVQ), but additive composition explains 10-14% of it and topographic similarity falls as round-trip rises; no held-out-combination test yet |
+| human-readable glyph layer | **not started** | no rendering, no reading, no legibility test; must be per-model until the inventory converges |
+| AI reasoning substrate | **measured, failing** | full 8-level code costs 1.3-1.7x the bits of the text it encodes; levels 0-1 cost 0.22x at 40% of gold fidelity |
 
-Best model: `model_dir/long-b128-20261010T042150Z/nubun_cs_step500000.eval.pt`
-(trained on the Cerebras CS-3, d_model 384, RVQ 8x128, 500k steps at B=128).
-Best GB10 model: `data/phase8_C1_d512_cos130k_step130000.pt` (0.5045).
+Models: `model_dir/long-b128-20261010T042150Z/nubun_cs_step500000.eval.pt`
+(CS-3, seed 42, d_model 384, RVQ 8x128, 500k steps at B=128, round-trip 0.582)
+and `model_dir/long-b128-seed2-20261014T160630Z/nubun_cs_step500000.eval.pt`
+(same recipe, seed 2, for the cross-seed test). Best GB10 model:
+`data/phase8_C1_d512_cos130k_step130000.pt` (0.5045).
+
+Where to go next: `PHASE9.md` §8 (consolidated status and ranked next steps).
 
 ## Documents
 
 | file | what it is |
 |---|---|
-| `PHASE9.md` | **start here**: review of progress against the goal, new measurements, and the proposed next phase |
+| `PHASE9.md` | **start here**: goal scorecard (§1), workstream plan (§4), success criteria with outcomes (§5), workstream A results (§7), consolidated status and next steps (§8) |
 | `LITERATURE.md` | literature review across ML, linguistics/writing systems, and information theory, with implications for Nubun |
 | `RADICALS.md` | curated level-0 radical inventories with cross-lingual evidence |
 | `PHASE8.md` | scale-up results: RVQ depth, width, schedule, data lever, CS-3 500k run |
