@@ -10,22 +10,28 @@
 #   5. side-by-side report of the cross-seed-stable level-0 pairs
 #      (scripts/stable_pairs_report.py on results/a4/pairs_seed2_seed42_500k.json)
 #
+# Outputs are tagged with the checkpoint's step (from its filename), so a run on
+# the wrong checkpoint cannot overwrite or pre-empt the right one. The script
+# refuses any file other than the converged 500k seed-2 .eval.pt unless FORCE=1.
+#
 # Usage: bash scripts/seed2_gb10.sh [seed2_ckpt] [seed42_ckpt]
-# Env:   OUT (results/a4), DUMP (data/codes_cs3_seed2_500k), TAU (0.5),
-#        SKIP="1 3" to skip steps, FLOOR_GB (20, watchdog floor)
+# Env:   OUT (results/a4/seed2_<step>), DUMP (data/codes_cs3_seed2_<step>), TAU (0.5),
+#        SKIP="1 3" to skip steps, FLOOR_GB (20, watchdog floor), FORCE=1
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-CK=${1:-model_dir/seed2-b128-20261013T221048Z/nubun_cs_step500000.eval.pt}
+CK=${1:-model_dir/long-b128-seed2-20261014T160630Z/nubun_cs_step500000.eval.pt}
 CK42=${2:-model_dir/long-b128-20261010T042150Z/nubun_cs_step500000.eval.pt}
-OUT=${OUT:-results/a4}
-DUMP=${DUMP:-data/codes_cs3_seed2_500k}
+STEP=$(basename "$CK" | grep -o 'step[0-9]*' | tr -d 'step' || true)
+STEP=${STEP:-unknown}
+OUT=${OUT:-results/a4/seed2_$STEP}
+DUMP=${DUMP:-data/codes_cs3_seed2_$STEP}
 TAU=${TAU:-0.5}
 SKIP=${SKIP:-}
 FLOOR_GB=${FLOOR_GB:-20}
 L0_42=${L0_42:-results/cs3_500k_codebook_L0.txt}
-L0_2=$OUT/codebook_L0_seed2_500k.txt
-PAIRS=$OUT/pairs_seed2_seed42_500k.json
+L0_2=$OUT/codebook_L0_seed2_$STEP.txt
+PAIRS=results/a4/pairs_seed2_seed42_500k.json
 LOG=$OUT/seed2_gb10.log
 
 mkdir -p "$OUT"
@@ -34,10 +40,12 @@ echo "=== $(date -u +%FT%TZ) seed2_gb10.sh start"
 
 [[ -f "$CK" ]] || { echo "missing seed-2 checkpoint: $CK"; exit 1; }
 size=$(stat -c %s "$CK")
-if [[ "$size" != 924642378 ]]; then
-    echo "WARNING: $CK is $size bytes; the converged seed-2 500k .eval.pt is 924642378."
-    echo "         model_dir/seed2-b128-20261013T221048Z/ on the ALCF node holds only the 50k run;"
-    echo "         the 500k model lives in model_dir/long-b128-seed2-20261014T160630Z/."
+if [[ "$size" != 924642378 || "$STEP" != 500000 ]]; then
+    echo "$CK: step $STEP, $size bytes. The converged seed-2 model is"
+    echo "  model_dir/long-b128-seed2-20261014T160630Z/nubun_cs_step500000.eval.pt (924642378 bytes),"
+    echo "  on the ALCF node; model_dir/seed2-b128-20261013T221048Z/ holds only the 50k seed-pair run."
+    if [[ "${FORCE:-0}" != 1 ]]; then echo "Refusing to run (FORCE=1 to override; outputs go to $OUT)."; exit 1; fi
+    echo "FORCE=1: continuing; outputs tagged _$STEP in $OUT"
 fi
 [[ -f "$PAIRS" ]] || { echo "missing $PAIRS (git pull origin main)"; exit 1; }
 
@@ -48,11 +56,11 @@ done_if() { [[ -s "$1" ]] && { echo "exists, skipping: $1"; return 0; } || retur
 # 1. round-trip -------------------------------------------------------------
 if ! skip 1; then
     step 1 "round-trip meaning (seed 42: 0.582 full, 0.346 depth 2, 0.478 depth 4)"
-    f=$OUT/roundtrip_seed2_500k.txt
+    f=$OUT/roundtrip_seed2_$STEP.txt
     done_if "$f" || python roundtrip_eval.py --checkpoint "$CK" --langs en,zh,es,fr,ar,ru \
         --combine-splits --max-gen-len 48 | tee "$f"
     for d in 2 4; do
-        f=$OUT/roundtrip_seed2_500k_depth$d.txt
+        f=$OUT/roundtrip_seed2_${STEP}_depth$d.txt
         done_if "$f" || python roundtrip_eval.py --checkpoint "$CK" --langs en,zh,es,fr,ar,ru \
             --combine-splits --max-gen-len 48 --rvq-depth $d | tee "$f"
     done
@@ -61,9 +69,9 @@ fi
 # 2. compositionality ---------------------------------------------------------
 if ! skip 2; then
     step 2 "compositionality suite (compare PHASE9 §7 A3, CS-3 @500k column)"
-    f=$OUT/compositionality_cs3_seed2_500k.txt
+    f=$OUT/compositionality_cs3_seed2_$STEP.txt
     done_if "$f" || python compositionality_metrics.py --checkpoint "$CK" \
-        --name cs3_seed2_500k --outdir "$OUT" | tee "$OUT/compositionality_seed2_500k.stdout"
+        --name cs3_seed2_$STEP --outdir "$OUT" | tee "$OUT/compositionality_seed2_$STEP.stdout"
 fi
 
 # 3. code dump + prior ---------------------------------------------------------
@@ -71,7 +79,7 @@ if ! skip 3; then
     step 3 "opus100 dump with the seed-2 encoder, then code prior at depth 2/4/8"
     done_if "$DUMP/codes.npy" || python dump_codes.py --checkpoint "$CK" --out "$DUMP"
     for d in 2 4 8; do
-        f=$OUT/prior_seed2_500k_depth$d.txt
+        f=$OUT/prior_seed2_${STEP}_depth$d.txt
         done_if "$f" || python code_prior.py --data "$DUMP" --mode codes --depth $d \
             --outdir "$OUT" | tee "$f"
     done
@@ -98,10 +106,12 @@ if ! skip 4; then
 fi
 
 # 5. stable pairs report -------------------------------------------------------
-if ! skip 5; then
+if ! skip 5 && [[ "$STEP" == 500000 ]]; then
     step 5 "cross-seed-stable level-0 pairs, decoded in both models (J >= $TAU)"
     python scripts/stable_pairs_report.py --pairs "$PAIRS" --a "$L0_2" --b "$L0_42" \
         --tau "$TAU" | tee "$OUT/stable_pairs_seed2_seed42_500k.txt"
+else
+    echo "step 5 skipped: the pair list is for the 500k models"
 fi
 
 echo
