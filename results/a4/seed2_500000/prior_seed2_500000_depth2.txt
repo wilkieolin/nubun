@@ -1,0 +1,70 @@
+prior_codes_d2: vocab 257, max_len 129, params 10.8M (10.6M non-embedding); train 2097413 sentences
+step 500  loss 0.9372 nats/token  0.041 s/step
+step 1000  loss 0.4065 nats/token  0.041 s/step
+step 1500  loss 0.3661 nats/token  0.041 s/step
+step 2000  loss 0.3138 nats/token  0.040 s/step
+step 2500  loss 0.3983 nats/token  0.040 s/step
+step 3000  loss 0.2469 nats/token  0.040 s/step
+step 3500  loss 0.3546 nats/token  0.040 s/step
+step 4000  loss 0.4401 nats/token  0.040 s/step
+step 4500  loss 0.3038 nats/token  0.040 s/step
+step 5000  loss 0.3297 nats/token  0.040 s/step
+  eval step 5000: opus test 62.3 bits/sentence
+step 5500  loss 0.3371 nats/token  0.041 s/step
+step 6000  loss 0.3287 nats/token  0.041 s/step
+step 6500  loss 0.3237 nats/token  0.041 s/step
+step 7000  loss 0.3791 nats/token  0.041 s/step
+step 7500  loss 0.3268 nats/token  0.041 s/step
+step 8000  loss 0.2698 nats/token  0.041 s/step
+step 8500  loss 0.3074 nats/token  0.041 s/step
+step 9000  loss 0.2894 nats/token  0.041 s/step
+step 9500  loss 0.2958 nats/token  0.041 s/step
+step 10000  loss 0.3528 nats/token  0.041 s/step
+  eval step 10000: opus test 58.3 bits/sentence
+step 10500  loss 0.3329 nats/token  0.041 s/step
+step 11000  loss 0.3304 nats/token  0.041 s/step
+step 11500  loss 0.3589 nats/token  0.041 s/step
+step 12000  loss 0.2990 nats/token  0.041 s/step
+step 12500  loss 0.3297 nats/token  0.041 s/step
+step 13000  loss 0.2717 nats/token  0.041 s/step
+step 13500  loss 0.4179 nats/token  0.041 s/step
+step 14000  loss 0.2792 nats/token  0.041 s/step
+step 14500  loss 0.3614 nats/token  0.041 s/step
+step 15000  loss 0.2977 nats/token  0.041 s/step
+  eval step 15000: opus test 56.9 bits/sentence
+step 15500  loss 0.3821 nats/token  0.041 s/step
+step 16000  loss 0.3628 nats/token  0.041 s/step
+step 16500  loss 0.2946 nats/token  0.041 s/step
+step 17000  loss 0.3126 nats/token  0.041 s/step
+step 17500  loss 0.2806 nats/token  0.041 s/step
+step 18000  loss 0.3513 nats/token  0.041 s/step
+step 18500  loss 0.2797 nats/token  0.041 s/step
+step 19000  loss 0.2686 nats/token  0.041 s/step
+step 19500  loss 0.2750 nats/token  0.041 s/step
+step 20000  loss 0.2987 nats/token  0.041 s/step
+  eval step 20000: opus test 55.8 bits/sentence
+step 20500  loss 0.3464 nats/token  0.041 s/step
+step 21000  loss 0.3392 nats/token  0.041 s/step
+step 21500  loss 0.2811 nats/token  0.041 s/step
+step 22000  loss 0.2988 nats/token  0.041 s/step
+step 22500  loss 0.3291 nats/token  0.041 s/step
+step 23000  loss 0.3545 nats/token  0.041 s/step
+step 23500  loss 0.2509 nats/token  0.041 s/step
+step 24000  loss 0.3115 nats/token  0.041 s/step
+step 24500  loss 0.2641 nats/token  0.041 s/step
+step 25000  loss 0.2700 nats/token  0.041 s/step
+  eval step 25000: opus test 55.1 bits/sentence
+step 25500  loss 0.3102 nats/token  0.041 s/step
+step 26000  loss 0.3495 nats/token  0.041 s/step
+step 26500  loss 0.2939 nats/token  0.041 s/step
+step 27000  loss 0.2831 nats/token  0.041 s/step
+step 27500  loss 0.3426 nats/token  0.041 s/step
+step 28000  loss 0.3075 nats/token  0.041 s/step
+step 28500  loss 0.2985 nats/token  0.041 s/step
+step 29000  loss 0.3634 nats/token  0.041 s/step
+step 29500  loss 0.3490 nats/token  0.041 s/step
+step 30000  loss 0.3086 nats/token  0.041 s/step
+  eval step 30000: opus test 54.9 bits/sentence
+
+prior_codes_d2: opus test 55.1 bits/sentence, FLORES 127.2 (raw code 896)
+FLORES per language: en 123.0, zh 116.1, es 131.0, hi 136.6, ar 125.6, fr 130.1, ru 125.9, ja 127.8, pt 127.7, de 128.0

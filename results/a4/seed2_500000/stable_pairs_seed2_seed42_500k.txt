@@ -1,0 +1,20 @@
+A = model_dir/long-b128-seed2-20261014T160630Z/nubun_cs_step500000.eval.pt (step 500000)
+B = model_dir/long-b128-20261010T042150Z/nubun_cs_step500000.eval.pt (step 500000)
+15 level-0 pairs with sentence-Jaccard >= 0.5; decoded codes: A 128, B 128
+
+    J    A  useA%    B  useB%  aggregate tokens (A | B)
+ 1.00   38   1.56   43   1.56  today ة ها الم else सि  |  hey sich has se لل ية
+ 0.76   86   3.50   29   1.74  por una für día क्योंकि qui  |  importante do because कुछ autres Möglichkeit
+ 0.70  114   1.37   35   2.02  क Europäische Union 长期 Consejo ं  |  Europäische Union European 0 человека 会议
+ 0.62   89   4.71   62   1.33  ́ ни 中 एच ओ sur  |  1 ने mos ̈ де 者
+ 0.61   33   0.57  104   0.54  子 ـ gemacht hacer niño eine  |  ني детей again enfants monde filhos
+ 0.60   53   4.07  118   1.34  п são هذه बारे ित gaz  |  t った качестве us 有 convertido
+ 0.60  120   4.14   75   0.97  e و avec или or sobre  |  بعد ما new 都 但 had
+ 0.58   98   2.74   27   0.98  Sr hey sur nom ao o  |  yeah कार फ बे च own
+ 0.56   42   3.66   73   4.06  ـ 男 mesmo Frau negative 没有  |  ment ten nur 意 hombre अमर
+ 0.54   49   0.44   30   0.55  50 9 una L 问 er  |  Europe 里 ـ size 克 من
+ 0.53  111   1.32   19   1.71  s para www grupo रा время  |  problema i 谈 случае possible es
+ 0.52    3   0.74  111   0.59  ने United du alt Jahre 了  |  会 importante する ल тем issue
+ 0.50   26   2.49  101   4.18  por a 拉 إلى doing 2000.  |  as r s ing still us
+ 0.50  102   0.28   79   0.08  今天 一個 要 आज रहे jour  |  日 1 年 瞧 月 10
+ 0.50    5   0.16   60   0.20  No شيء body Не Нет 達  |  ti No nada Sul ничего thing
