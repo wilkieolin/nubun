@@ -1,0 +1,110 @@
+/home/wolinammentorp/code/nubun/codebook_stability.py:151: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  emb = torch.load(args.embedding_table, map_location="cpu")
+A: model_dir/long-b128-seed3-20261019T210243Z/nubun_cs_step500000.eval.pt (step 500000)
+B: model_dir/long-b128-20261010T042150Z/nubun_cs_step500000.eval.pt (step 500000)
+200 sentences x 10 langs, k=128, m_max=64
+
+lvl actA actB |        slot-agree |             NMI |     sent-Jacc(mean) |     recur@tau |  mass
+              |     real   chance |    real  chance |      real    chance |   real chance | 
+  0   79   73 |    0.285    0.094 |   0.323   0.176 |     0.300     0.124 |  0.139  0.063 |  0.30
+  1  122  116 |    0.186    0.091 |   0.242   0.172 |     0.190     0.081 |  0.008  0.000 |  0.01
+  2  122  122 |    0.151    0.075 |   0.205   0.151 |     0.140     0.078 |  0.000  0.000 |  0.00
+  3  127  121 |    0.127    0.068 |   0.176   0.135 |     0.130     0.076 |  0.000  0.000 |  0.00
+  4  126  125 |    0.081    0.062 |   0.146   0.125 |     0.106     0.079 |  0.000  0.000 |  0.00
+  5  125  124 |    0.081    0.059 |   0.136   0.116 |     0.101     0.079 |  0.000  0.000 |  0.00
+  6  125  123 |    0.078    0.053 |   0.131   0.110 |     0.097     0.078 |  0.000  0.000 |  0.00
+  7  128  122 |    0.062    0.054 |   0.119   0.106 |     0.093     0.078 |  0.000  0.000 |  0.00
+
+Joint stacks (levels 0..l), NMI between A's and B's stack labels
+  (read the real-chance GAP: past level 2 most stacks are unique, so NMI saturates toward 1 for any pairing and the gap shrinks):
+  0..0: NMI real=0.323  chance=0.176  (distinct stacks A=109, B=102)
+  0..1: NMI real=0.658  chance=0.644  (distinct stacks A=3883, B=3567)
+  0..2: NMI real=0.817  chance=0.812  (distinct stacks A=28159, B=16810)
+  0..3: NMI real=0.857  chance=0.854  (distinct stacks A=42896, B=24622)
+  0..4: NMI real=0.871  chance=0.870  (distinct stacks A=48675, B=28076)
+  0..5: NMI real=0.876  chance=0.875  (distinct stacks A=51855, B=30250)
+  0..6: NMI real=0.879  chance=0.878  (distinct stacks A=53881, B=31926)
+  0..7: NMI real=0.881  chance=0.880  (distinct stacks A=55465, B=33271)
+
+Level-0 radicals of A (usage >= 1.0e-03 of slots), matched partner in B:
+   A  useA% ->    B  useB%  sentJ
+  53   5.97 ->  118   1.34   0.61
+  33   4.17 ->   73   4.06   0.57
+ 100   3.84 ->   91   6.44   0.39
+ 101   3.67 ->   62   1.33   0.63
+  16   3.67 ->   75   0.97   0.52
+  18   3.20 ->  127   4.22   0.48
+  29   3.13 ->   29   1.74   0.68
+  98   3.00 ->   26   1.60   0.32
+ 122   2.97 ->   42   4.28   0.39
+  54   2.83 ->  101   4.18   0.47
+  63   2.81 ->   27   0.98   0.52
+ 109   2.81 ->   43   1.56   0.76
+  82   2.72 ->   20   0.35   0.11
+  38   2.62 ->  114   1.71   0.45
+  66   2.35 ->   90   3.30   0.27
+  36   2.21 ->   37   1.39   0.09
+   8   2.18 ->   77   1.05   0.23
+  67   1.99 ->   44   3.88   0.34
+  64   1.93 ->   63   2.44   0.49
+   3   1.77 ->   45   2.96   0.32
+ 126   1.77 ->    6   0.00   0.01
+  56   1.72 ->   28   0.59   0.15
+ 118   1.64 ->   23   0.39   0.10
+  62   1.50 ->   99   0.58   0.35
+  86   1.40 ->   35   2.02   0.76
+  78   1.32 ->   19   1.71   0.48
+  24   1.29 ->   18   2.09   0.27
+  23   1.26 ->  125   1.81   0.25
+  60   1.24 ->   24   1.38   0.08
+  45   1.23 ->   89   1.40   0.31
+  90   1.16 ->  107   1.96   0.45
+ 116   1.16 ->   94   0.00   0.00
+  52   1.15 ->    1   0.01   0.02
+  28   1.09 ->   47   1.52   0.37
+  14   1.09 ->  126   1.41   0.39
+ 127   1.04 ->  109   1.59   0.51
+  37   1.03 ->   38   1.13   0.31
+  74   0.89 ->   53   4.11   0.24
+ 107   0.88 ->   49   0.44   0.44
+  12   0.81 ->  115   0.50   0.34
+ 113   0.80 ->  112   1.56   0.36
+  79   0.80 ->   97   1.12   0.30
+  11   0.75 ->   14   4.29   0.10
+ 115   0.68 ->   48   0.14   0.13
+  87   0.68 ->  110   1.33   0.23
+  92   0.64 ->   40   0.75   0.46
+  95   0.62 ->   46   0.65   0.41
+ 119   0.61 ->   61   0.73   0.37
+  35   0.54 ->  121   0.53   0.40
+   6   0.51 ->   87   1.20   0.42
+  22   0.50 ->   15   1.06   0.28
+  73   0.50 ->   98   0.76   0.32
+  31   0.48 ->   56   1.81   0.22
+  76   0.48 ->  111   0.59   0.59
+  85   0.45 ->   85   0.57   0.26
+  13   0.45 ->  104   0.54   0.57
+  97   0.36 ->   36   0.64   0.09
+ 110   0.35 ->   69   0.26   0.48
+ 114   0.35 ->  113   1.29   0.14
+   4   0.32 ->   16   0.17   0.22
+   5   0.32 ->    0   0.20   0.08
+  55   0.31 ->    4   0.58   0.28
+  88   0.26 ->   17   0.35   0.22
+  46   0.25 ->  124   0.28   0.47
+  77   0.24 ->   96   0.27   0.35
+  15   0.24 ->   60   0.20   0.30
+  81   0.21 ->   70   0.11   0.10
+ 121   0.21 ->   82   0.76   0.19
+  91   0.20 ->   13   0.25   0.36
+  44   0.20 ->   93   0.00   0.00
+  25   0.20 ->   81   0.00   0.08
+ 102   0.17 ->  119   0.00   0.00
+  27   0.16 ->   31   0.04   0.05
+ 124   0.15 ->   68   0.08   0.09
+   2   0.15 ->  122   0.38   0.17
+  48   0.13 ->   80   0.00   0.00
+  99   0.12 ->   30   0.55   0.12
+  57   0.11 ->   78   0.00   0.00
+  71   0.11 ->   92   0.01   0.07
+wrote results/a4/pairs_seed3_seed42_500k.json
