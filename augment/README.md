@@ -383,7 +383,8 @@ distance (fr imparfait comes back as "was giving").
 | English edits accepted | 220/300 (73%; 45 skips, mostly justified: discourse frames, *never*, *anymore*) | 234/300 (78%) |
 | translation accepted, per language | 97-100% | 97-100% |
 | back-translation accepted, per language | 88-95% | ar 78, ja 83, fr 84, ru 87, hi 87, pt 89, de 91, es 91 |
-| pairs in all languages (packaged) | 210/220 | 99/234 (166 in >= 7 of 8) |
+| pairs in all languages | 210/220 | 99/234 (166 in >= 7 of 8) |
+| packaged (`--min-langs 1`, per-language) | 220; 214-220 per shard | 233; 179-212 per shard |
 
 Remaining tense losses: perfect <-> pluperfect pairs do not survive
 translation (fr passé composé back-translates as simple past; ar "كنت قد كنت"),
@@ -392,6 +393,13 @@ the next run); real ar translation errors; BT pronoun confusions. Negation
 `remove` candidates now need a main-clause not/n't (about half of the remove
 skips were *never*, which the prompt forbids deleting).
 
+`package` now keeps a pair in every language shard where it passed
+(`--min-langs 1` default; `0` = require all of the factor's languages). Each
+shard keeps the two members of a pair as consecutive rows, so a pair missing
+from one language does not affect pairing elsewhere.
+
 `review` writes a markdown sheet for the §5.6 human read
-(`augment/work/muse_e2e/review.md`: 30 accepted + 30 rejected per language,
-zh/ja/ar/hi, with English pair, target pair, back-translation and verdict).
+(`augment/work/muse_e2e/review.md`: 30 accepted + 30 rejected per factor for
+English edits and for de/fr/ja translations, with English pair, target pair,
+back-translation and verdict; 438 items). zh/ar/hi have no human reader and rely
+on the automatic checks. Scaling to the medium run waits on this read.

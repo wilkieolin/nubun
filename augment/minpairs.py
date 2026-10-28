@@ -1246,14 +1246,32 @@ def cmd_review(args, work):
            f"back-translate {args.backtrans_model}\n",
            "Mark each item OK / BAD (BAD: not a minimal pair, factor not flipped, or "
            "ungrammatical). Compare with the automatic verdict.\n"]
+    langs_req = args.langs.split(",")
     for factor in args.factors.split(","):
+        if "en" in langs_req:
+            if not args.edit_model:
+                raise SystemExit("--edit-model needed to review en")
+            recs = read_jsonl(work.p("verified", f"edit.{factor}.{slug(args.edit_model)}.jsonl"))
+            acc = [r for r in recs if r["accepted"]]
+            rej = [r for r in recs if not r["accepted"]]
+            out.append(f"\n## {factor} / en (edit {args.edit_model}): {len(acc)} accepted, "
+                       f"{len(rej)} rejected (of {len(recs)} candidates)\n")
+            for label, group in (("accepted", acc), ("rejected", rej)):
+                pick = rng.sample(group, min(args.n, len(group)))
+                out.append(f"\n### {label} ({len(pick)} of {len(group)})\n")
+                for k, r in enumerate(pick, 1):
+                    out.append(f"{k}. `{r['pair_id']}` [{r['direction']}]"
+                               + (f" auto: **{r['reason']}**" if r["reason"] else "") + "  \n"
+                               f"   A: {r['a']}  \n"
+                               + (f"   B: {r['b']}  \n" if r.get("b") else "")
+                               + "   verdict: ____\n")
         trs = accepted_translations(work, factor, args.translate_model)
         bt = {}
         if args.backtrans_model:
             path = work.p("verified", stage_name("bt", factor, args.backtrans_model,
                                                  args.translate_model) + ".jsonl")
             bt = {(r["pair_id"], r["lang"]): r for r in read_jsonl(path)}
-        for lang in args.langs.split(","):
+        for lang in langs_req:
             if lang not in FACTOR_LANGS[factor]:
                 continue
             items = []
@@ -1308,7 +1326,7 @@ def cmd_package(args, work):
             for lang, v in t["langs"].items():
                 if v["accepted"] and (bt_ok is None or (pid, lang) in bt_ok):
                     langs[lang] = (v["a"], v["b"])
-            need = len(FACTOR_LANGS[factor]) if args.min_langs is None else args.min_langs
+            need = args.min_langs or len(FACTOR_LANGS[factor])
             if len(langs) - 1 >= need:
                 pairs.append((pid, factor, t["direction"], langs, t["langs"]))
                 kept += 1
@@ -1423,10 +1441,11 @@ def main():
     sub.add_parser("report")
 
     s = sub.add_parser("review", help="markdown sheet of accepted/rejected pairs per language")
+    s.add_argument("--edit-model", help="needed when --langs includes en (edit-stage review)")
     s.add_argument("--translate-model", required=True)
     s.add_argument("--backtrans-model")
     s.add_argument("--factors", default="negation,tense")
-    s.add_argument("--langs", default="zh,ja,ar,hi")
+    s.add_argument("--langs", default="en,de,fr,ja")
     s.add_argument("--n", type=int, default=30, help="items per (language, accepted|rejected)")
     s.add_argument("--seed", type=int, default=0)
     s.add_argument("--out")
@@ -1438,8 +1457,9 @@ def main():
     s.add_argument("--backtrans-model")
     s.add_argument("--require-bt-negation", action="store_true",
                    help="also require back-translation for negation (only sampled pairs survive)")
-    s.add_argument("--min-langs", type=int, help="accepted target languages per pair "
-                   "(default: all of the factor's languages, 9 negation / 8 tense)")
+    s.add_argument("--min-langs", type=int, default=1, help="accepted target languages per "
+                   "pair; a pair goes into each language shard where it passed, so pairs "
+                   "missing some languages are kept (0 = all of the factor's languages)")
     s.add_argument("--max-len", type=int, default=128)
     s.add_argument("--out", default=os.path.join(REPO, "data", "minpairs"))
 
