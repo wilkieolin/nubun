@@ -232,6 +232,18 @@ def main():
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = parser.parse_args()
 
+    if args.device.startswith("cuda") and torch.cuda.is_available():
+        # GB10 unified memory: the caching allocator keeps whatever it reserves, and
+        # the decode ramps up over minutes; cap it as train_vqvae.py does so the box
+        # cannot be driven into swap. Override with CUDA_MEM_FRACTION.
+        import os
+        dev = torch.device(args.device)
+        frac = float(os.environ.get("CUDA_MEM_FRACTION", "0.45"))
+        torch.cuda.set_per_process_memory_fraction(frac, dev.index or 0)
+        total_gb = torch.cuda.get_device_properties(dev.index or 0).total_memory / 1e9
+        print(f"CUDA memory capped at {frac:.0%} of {total_gb:.0f} GB = {frac * total_gb:.0f} GB "
+              f"(CUDA_MEM_FRACTION={frac}); if the decode OOMs below this, lower --decode-chunk")
+
     print(f"Loading checkpoint: {args.checkpoint}")
     ckpt = vqvae_select.load_checkpoint(args.checkpoint)
     cfg = ckpt["args"]

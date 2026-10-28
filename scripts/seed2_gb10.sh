@@ -20,7 +20,9 @@
 # Usage: bash scripts/seed2_gb10.sh [ckpt] [seed42_ckpt]
 #   e.g. bash scripts/seed2_gb10.sh model_dir/long-b128-seed3-20261019T210243Z/nubun_cs_step500000.eval.pt
 # Env:   OUT (results/a4/<seed>_<step>), DUMP (data/codes_cs3_<seed>_<step>), TAU (0.5),
-#        SKIP="1 3" to skip steps, FLOOR_GB (20, watchdog floor), FORCE=1
+#        SKIP="1 3" to skip steps, FLOOR_GB (20, watchdog floor), FORCE=1,
+#        DECODE_CHUNK (1024; 256 halves the decode's peak), CUDA_MEM_FRACTION (0.45 for the
+#        decode: it is passed through to analyze_codebook.py)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -92,7 +94,8 @@ fi
 
 # 4. level-0 decodes -----------------------------------------------------------
 decode_l0() {  # ckpt out
-    python analyze_codebook.py --checkpoint "$1" --rvq-level 0 --output "$2" &
+    python analyze_codebook.py --checkpoint "$1" --rvq-level 0 --output "$2" \
+        --decode-chunk "${DECODE_CHUNK:-1024}" &
     pid=$!
     bash scripts/mem_watchdog.sh $pid "$FLOOR_GB" &
     wd=$!
