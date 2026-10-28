@@ -9,3 +9,4 @@ cerebras_logs/
 compile_dir/
 model_dir/
 *.graph
+augment/work/

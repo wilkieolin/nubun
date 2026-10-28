@@ -68,49 +68,59 @@ NER_GROUPS = {"person": {"PERSON"}, "place": {"GPE", "LOC", "FAC"}, "org": {"ORG
 
 
 # ---------------------------------------------------------------- attributes
+ATTR_NAMES = ["neg", "tense", "subj_person", "subj_number", "field",
+              *[f"ner_{g}" for g in NER_GROUPS]]
+
+
+def doc_attributes(doc):
+    """One spaCy doc -> {attr: string value} (also used by augment/minpairs.py)."""
+    a = {}
+    root = next((t for t in doc if t.dep_ == "ROOT"), doc[0])
+    a["neg"] = str(int(any(t.dep_ == "neg" or t.lemma_.lower() in NEG_LEMMAS for t in doc)))
+    aux = [c for c in root.children if c.dep_ in ("aux", "auxpass")]
+    tense = "none"
+    if any(x.lower_ in ("will", "shall", "'ll") for x in aux):
+        tense = "fut"
+    else:
+        for t in [*aux, root]:  # first finite tense: "was taken" -> past, "has gone" -> pres
+            ts = t.morph.get("Tense")
+            if ts:
+                tense = ts[0].lower()
+                break
+    a["tense"] = tense
+    subj = next((c for c in root.children if c.dep_ in ("nsubj", "nsubjpass")), None)
+    if subj is None:
+        person, number = "none", "none"
+    else:
+        p = subj.morph.get("Person")
+        # 1st and 2nd person are each <2% of FLORES: merge as speech participants
+        person = ("12" if p[0] in ("1", "2") else p[0]) if (subj.pos_ == "PRON" and p) else "3n"
+        n = subj.morph.get("Number")
+        number = n[0].lower() if n else "none"
+    a["subj_person"] = person
+    a["subj_number"] = number
+    hits = {}
+    for t in doc:
+        f = FIELD_OF.get(t.lemma_.lower())
+        if f:
+            hits[f] = hits.get(f, 0) + 1
+    best = sorted(hits.items(), key=lambda kv: -kv[1])
+    a["field"] = (best[0][0] if best and (len(best) == 1 or best[0][1] > best[1][1])
+                  else "none")
+    labels = {e.label_ for e in doc.ents}
+    for g, s in NER_GROUPS.items():
+        a[f"ner_{g}"] = str(int(bool(labels & s)))
+    return a
+
+
 def label_attributes(texts):
     """English sentences -> {attr: array of string values}."""
     import spacy
     nlp = spacy.load("en_core_web_sm")
-    cols = {k: [] for k in ["neg", "tense", "subj_person", "subj_number", "field",
-                            *[f"ner_{g}" for g in NER_GROUPS]]}
+    cols = {k: [] for k in ATTR_NAMES}
     for doc in nlp.pipe(texts, batch_size=64):
-        root = next((t for t in doc if t.dep_ == "ROOT"), doc[0])
-        cols["neg"].append(str(int(any(t.dep_ == "neg" or t.lemma_.lower() in NEG_LEMMAS
-                                       for t in doc))))
-        aux = [c for c in root.children if c.dep_ in ("aux", "auxpass")]
-        tense = "none"
-        if any(a.lower_ in ("will", "shall", "'ll") for a in aux):
-            tense = "fut"
-        else:
-            for t in [*aux, root]:  # first finite tense: "was taken" -> past, "has gone" -> pres
-                ts = t.morph.get("Tense")
-                if ts:
-                    tense = ts[0].lower()
-                    break
-        cols["tense"].append(tense)
-        subj = next((c for c in root.children if c.dep_ in ("nsubj", "nsubjpass")), None)
-        if subj is None:
-            person, number = "none", "none"
-        else:
-            p = subj.morph.get("Person")
-            # 1st and 2nd person are each <2% of FLORES: merge as speech participants
-            person = ("12" if p[0] in ("1", "2") else p[0]) if (subj.pos_ == "PRON" and p) else "3n"
-            n = subj.morph.get("Number")
-            number = n[0].lower() if n else "none"
-        cols["subj_person"].append(person)
-        cols["subj_number"].append(number)
-        hits = {}
-        for t in doc:
-            f = FIELD_OF.get(t.lemma_.lower())
-            if f:
-                hits[f] = hits.get(f, 0) + 1
-        best = sorted(hits.items(), key=lambda kv: -kv[1])
-        cols["field"].append(best[0][0] if best and (len(best) == 1 or best[0][1] > best[1][1])
-                             else "none")
-        labels = {e.label_ for e in doc.ents}
-        for g, s in NER_GROUPS.items():
-            cols[f"ner_{g}"].append(str(int(bool(labels & s))))
+        for k, v in doc_attributes(doc).items():
+            cols[k].append(v)
     return {k: np.array(v) for k, v in cols.items()}
 
 

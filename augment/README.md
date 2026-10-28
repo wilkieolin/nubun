@@ -1,0 +1,258 @@
+# Minimal-pair augmentation: specification (Phase 9, branch 2)
+
+Status: implemented as `minpairs.py` (2026-10-28), tested offline against
+simulated batch output; the §4 smoke batch has not run yet. The script drives
+the ALCF inference batch service through the stages below (`python
+augment/minpairs.py --help` for the subcommands); this document is its target.
+
+## 1. Why
+
+`PHASE9.md` §7 A4 and §8 finding 7: parallel translations identify the meaning
+of a sentence as a whole (the interlingua is seed-robust) but not its
+factorisation into radicals (95% of level 0 is seed-specific). Translations
+share every meaning factor and differ only in language, so they cannot
+identify structure inside meaning. Pairs that share all meaning factors but
+one, with the changed factor known, do identify it (Locatello et al. 2020,
+weakly supervised disentanglement; Shu et al. ICLR 2020, consistency and
+restrictiveness; Klindt et al. ICLR 2021 and Ahuja et al. 2022, sparse
+transitions). This directory produces such pairs for the two factors that are
+categorical, frequent in every language and expressible as a sentence edit:
+**polarity of the main clause (negation)** and **tense of the main clause
+(present vs past)**.
+
+Two kinds of pair are needed (Shu et al.):
+
+| pair type | members | what it identifies | source |
+|---|---|---|---|
+| change pair (minimal pair) | same sentence, factor flipped | restrictiveness: the factor's effect is confined to one code | generated here |
+| share pair | two unrelated sentences with the same factor value | consistency: that code depends only on the factor | free, from the attribute labels `compositionality_metrics.py` already computes |
+
+Only change pairs need generation.
+
+## 2. Deliverable
+
+A corpus of minimal pairs, each pair present in all ten languages, with:
+
+- `pair_id`, `factor` (`negation` | `tense`), `direction` (`add`/`remove` or
+  `to_past`/`to_present`), `source` (opus100 shard and row),
+- for each language: `a` and `b` text, their XLM-R token ids (the
+  `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` tokenizer, as
+  the rest of the corpus), and the verification verdicts,
+- packaged in the opus100 shard layout (`src_tokens`/`src_offsets`, see
+  `build_opus100_corpus.py`) plus `pair_id` and `factor` arrays, so the trainer
+  can co-locate the two members of a pair in one batch.
+
+Target size: tens of thousands of pairs (20k per factor to start), mixed into
+the 2M-pair opus100 corpus, not replacing it.
+
+## 3. Pipeline
+
+```
+opus100 English sides ──filter──> candidates ──batch LLM edit──> English pairs
+   ──local verify──> accepted English pairs ──batch LLM joint translation──> 10-language pairs
+   ──local verify (+ batch back-translation for tense)──> accepted pairs ──package──> shards
+```
+
+Every LLM stage is followed by a local, LLM-free verifier. The verifier is
+what makes the corpus trustworthy; the prompts only make the yield high.
+
+### 3.1 Candidates
+
+Source: the English side (`tgt_*` arrays) of the opus100 shards in
+`data/opus100/`, detokenised with the MiniLM tokenizer, or the raw
+`Helsinki-NLP/opus-100` text when it is cached. Seeded sample, balanced across
+the nine shards. Filters, using spaCy `en_core_web_sm` with the same rules as
+`label_attributes()` in `compositionality_metrics.py`:
+
+- 6 to 25 tokens, exactly one sentence, no quotation marks, no URL, no all-caps
+  headline;
+- a ROOT with a finite tense and a subject;
+- negation: half the candidates currently negated (`neg=1`, direction
+  `remove`), half not (`add`);
+- tense: `tense` in {pres, past}, no future auxiliary, no modal on the root, no
+  time adverbial from a stop list (yesterday, tomorrow, ago, last, next, now,
+  currently, soon);
+- 300 per factor for the pilot, 50k per factor for production (expect ~40%
+  loss by the end).
+
+### 3.2 LLM edit (English)
+
+One request per 20 candidates, JSON answer with one item per input id:
+`op` (`add` | `remove` | `skip`, or `to_past` | `to_present` | `skip`) and
+`variant`. The prompt for each factor must state:
+
+- negation: toggle polarity on the main clause's finite verb only, with
+  do-support where English needs it; match the source's contraction register;
+  allow only forced agreement changes (some/any, already/yet, too/either);
+  never add or remove adverbs (never, anymore, at all); skip fragments,
+  headlines, quotations, sentences whose only negation is in a subordinate
+  clause, and idioms whose meaning the toggle changes (can't help, not only).
+- tense: switch the main clause between simple present and simple past,
+  carrying sequence-of-tense agreement, keeping aspect (progressive stays
+  progressive, perfect stays perfect); change nothing else; skip timeless
+  generalities, sentences with a conflicting time adverbial, futures, modals,
+  headlines, quotations, fragments.
+- both: three or four worked examples including one `skip`; "output only the
+  JSON object"; temperature 0; for reasoning models, the lowest reasoning
+  effort.
+
+### 3.3 Local verification of English pairs
+
+Accept a pair only if all hold:
+
+| check | negation | tense |
+|---|---|---|
+| spaCy attribute diff | `neg` flips; `tense`, `subj_person`, `subj_number`, NER flags unchanged | `tense` flips pres<->past; `neg`, `subj_*`, NER flags unchanged |
+| whitespace-token edit distance (difflib) | <= 3 (do-support + particle + one agreement word) | <= number of finite verbs + 1 |
+| MiniLM cosine between members | >= 0.6 | >= 0.6 |
+| identity | members differ | members differ |
+
+Record the reason for every rejection. Expected yield 85 to 95%.
+
+### 3.4 LLM joint translation
+
+One request per accepted English pair returning all nine target languages
+(`zh, es, fr, ar, ru, hi, ja, pt, de`), each as `{"a", "b"}`. The prompt must
+state: A and B differ only in the named factor; translate A, then derive B
+from the translation of A by the minimal change (never translate B
+independently); the two translations must be word-for-word identical except
+for the factor; realise the factor with the language's smallest conventional
+device (negation particle or negative verb form; past-tense form, or in Chinese
+and Japanese the aspect/past marker 了 / 过 / た-form), never with a time
+adverb or a different word choice; return null for a language where this is
+impossible.
+
+### 3.5 Local verification of translations
+
+Per language, accept only if:
+
+- the two members differ and their character-level similarity ratio
+  (difflib) is >= 0.6, so a re-translated B is rejected;
+- negation: a per-language negation-marker pattern matches exactly one member
+  (zh 不|没|无|未; ja ない|ません|ず|なかった|ませんでした; de nicht|kein|keine|keinen;
+  ru не|нет|ни; es/pt no|não|nunca|nada|nem; fr ne|n'|pas|jamais|aucun; ar لا|لم|لن|ليس|ما|غير;
+  hi नहीं|न|मत), with the richer member's count higher by at least one;
+- tense in zh/ja: the aspect/past marker is present in exactly one member
+  (soft check, logged, not decisive);
+- tense in all languages: decided by back-translation (3.6).
+
+### 3.6 Back-translation (tense, and a sample of negation)
+
+One request per (pair, language) asking for literal English translations of
+both members. The English verifier of 3.3 is then applied to the two
+back-translations: accept the language if the factor flips and nothing else
+changes. Also run on a 10% sample of negation pairs as a calibration of the
+regex check.
+
+### 3.7 Packaging
+
+Accepted pairs tokenised with the MiniLM tokenizer; written as shards in the
+opus100 layout with two extra arrays, `pair_id` (int32, same id on the two
+members) and `factor` (uint8: 0 negation, 1 tense); a sidecar JSONL with the
+text and verdicts for inspection. The trainer change (pair co-location in a
+batch, a penalty on the number of slots whose code stack differs between the
+members beyond a budget of one or two, and a consistency term on share pairs)
+is specified in `PHASE9.md` §8 branch 2 and is not part of this directory.
+
+## 4. ALCF batch service
+
+From docs.alcf.anl.gov/services/inference-endpoints/batch/ and /models/:
+
+- Batches run only on **Sophia** (A100, vLLM) and only for models flagged B:
+  `meta-llama/Meta-Llama-3.1-8B-Instruct`, `-70B-Instruct`, `-405B-Instruct`,
+  `meta-llama/Llama-3.3-70B-Instruct`, `meta-llama/Llama-4-Scout-17B-16E-Instruct`,
+  `google/gemma-3-27b-it`, `openai/gpt-oss-20b`, `openai/gpt-oss-120b`.
+  Minerva's `muse-spark-bf16` and the other Minerva/Metis/Tara models are
+  interactive only (chat completions), no batch endpoint.
+- Auth: bearer token with the `inference` scope
+  (`alcf-tokens get-token inference`; Python `alcf_tokens.auth.get_access_token`).
+- Create: `POST https://inference-api.alcf.anl.gov/resource_server/sophia/vllm/v1/batches`
+  with `{"model", "input_file", "output_folder_path"}`; input must be JSONL on
+  `/eagle/argonne_tpc/...` or a world-readable path.
+- Status: `GET .../resource_server/v1/batches/{batch_id}` (pending | running |
+  failed | completed). Result: `GET .../{batch_id}/result` returns
+  `results_file` (`<input>_<model>_<batch>/*.results.jsonl`), `progress_file`
+  and metrics. List: `GET .../resource_server/v1/batches`. Cancel is not
+  self-service.
+- Limits: 150k requests per file, 10 MB per request; cold start 10-15 min for
+  models that are not always hot (405B, Llama 3.3 70B, Scout, Gemma 3 are not
+  hot; 3.1 8B/70B and gpt-oss are); dynamically loaded models unload after 2 h
+  idle. No published turnaround or concurrency limits.
+- **Unknowns to settle with a 3-line smoke batch before anything else:** the
+  per-line request format (assumed vLLM/OpenAI batch format
+  `{"custom_id","method":"POST","url":"/v1/chat/completions","body":{...}}`;
+  fallback: the chat body alone), the results line shape, whether
+  `response_format` JSON mode / guided decoding is honoured, and the body of
+  the create response (assumed to carry `batch_id`).
+- `collect` must run where `/eagle` is mounted (Sophia/Polaris login node), or
+  the results files are rsynced to the GB10 first; verification and packaging
+  can run anywhere with spaCy and the tokenizer.
+
+Request line conventions: `custom_id = <stage>:<factor>:<pair_id>[:<lang>]`;
+`temperature 0`; `max_tokens` 1200 for edits (20 items), 1500 for a nine-language
+translation, 300 for a back-translation; the system prompt identical across a
+stage so any server-side prefix caching applies.
+
+## 5. Pilot protocol
+
+Goal: choose the production model(s) by measured minimality, per stage.
+
+1. Smoke batch on `Meta-Llama-3.1-8B-Instruct` (hot) to fix the line format.
+2. 300 candidates per factor. Submit the same edit input to at least:
+   `Meta-Llama-3.1-405B-Instruct`, `google/gemma-3-27b-it`, `openai/gpt-oss-120b`
+   (and `Llama-3.3-70B-Instruct` if cheap). Verify. Record acceptance per
+   model and rejection reasons.
+3. Take the accepted pairs of the best edit model; submit the same translation
+   input to the same model set. Verify. Record acceptance per model and per
+   language; expect Chinese and Japanese tense to be lowest.
+4. Back-translate with a hot 70B model; apply the English verifier.
+5. Optionally score the same 300 pairs through `muse-spark-bf16`
+   interactively (chat completions on Minerva, packing 20 sentences or 5 pairs
+   per request) to see the ceiling the batch models give up.
+6. Human read of 30 accepted and 30 rejected translations per language for
+   zh, ja, ar, hi, to calibrate the regex and similarity thresholds.
+
+Decision rule: per stage, the cheapest model whose per-language acceptance is
+within 5 points of the best model's. A split (a smaller model for English
+edits, the largest for translation) is the expected outcome.
+
+Report (`report` stage): for each stage x model x factor (x language):
+submitted, returned, parsed, accepted, rejection-reason histogram, and the
+model's batch metrics (throughput, response time) from the result endpoint.
+
+## 6. Success criteria for the corpus
+
+- >= 85% of English edits accepted for both factors on the chosen model.
+- >= 70% of translations accepted in every language (>= 60% for zh/ja tense).
+- Human calibration agrees with the automatic verdict on >= 90% of the
+  sample.
+- Production run: 20k accepted pairs per factor in all ten languages.
+
+Downstream success (not this directory): on two seeds of the new recipe, the
+cross-seed recurring fraction of level-0 radicals rises above the current
+three-seed core (3-4 content radicals, 4-5%), negation and tense enter the
+core, and the substitution test (swap the identified code into real encodings)
+flips the decode as the factor predicts.
+
+## 7. Cost and throughput
+
+40k accepted pairs from 100k candidates: ~5k edit requests (20 items each,
+~1k tokens in, ~600 out) and ~40k translation requests (~500 in, ~700 out),
+plus ~360k short back-translation requests if run for every language (or
+~40k if run for tense only in a 10% sample plus all of zh/ja). All within the
+150k-per-file limit when split by stage and language. ALCF batch is
+allocation-billed; the only external cost is time. For reference, the same
+volume on a commercial API at frontier-model rates is in the low hundreds of
+dollars with batch discounts; on a small hot model it is tens.
+
+## 8. Open questions
+
+- Whether `response_format` is honoured on the batch path; if not, strict
+  "JSON only" instructions plus a tolerant parser (first `{` to last `}`).
+- Whether the detokenised English from the shards is faithful enough, or the
+  raw opus-100 text should be re-downloaded on the GB10 for candidates.
+- Chinese and Japanese tense: whether the aspect-marker realisation counts as
+  the same factor for the trainer's purposes, or whether tense pairs should be
+  restricted to the eight languages with inflectional tense.
+- How many share pairs the consistency term needs, and whether they should be
+  drawn from opus100 or from the generated pairs' members.
