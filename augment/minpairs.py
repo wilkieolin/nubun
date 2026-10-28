@@ -81,6 +81,7 @@ DIRECTIONS = {"negation": ("add", "remove"), "tense": ("to_past", "to_present")}
 MAX_LINES = 150_000          # per batch input file (README §4)
 MAX_TOKENS = {"edit": 1200, "tr": 1500, "bt": 300}
 EDIT_CHUNK = 20
+REASONING_MODELS = ("gpt-oss", "muse-spark", "nemotron", "beam-", "inkling")   # think before answering
 TERMINAL = {"completed", "failed", "cancelled", "expired"}
 
 TIME_ADVERBS = {"yesterday", "tomorrow", "ago", "last", "next", "now", "currently", "soon"}
@@ -268,9 +269,12 @@ def chat_body(model, system, user, max_tokens, json_mode):
                          {"role": "user", "content": user}]}
     if json_mode:
         body["response_format"] = {"type": "json_object"}
-    if "gpt-oss" in model:          # reasoning tokens count against max_tokens; low effort
-        body["reasoning_effort"] = "low"  # still spends 1-3k on a 20-item edit
-        body["max_tokens"] = max_tokens + 4000
+    if any(k in model for k in REASONING_MODELS):
+        # reasoning counts against max_tokens. On a 20-item edit, default effort spends
+        # 12-14k (muse, beam, inkling, nemotron); "low" cuts that to 1.6-3k, except
+        # nemotron (~9k) and gpt-oss (1-3k). Headroom is free: only used tokens are billed.
+        body["reasoning_effort"] = "low"
+        body["max_tokens"] = max_tokens + 20000
     return body
 
 

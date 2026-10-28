@@ -172,6 +172,9 @@ answered); editing a prompt changes the input digest and starts a fresh run.
   "high-assurance timeout" means the Globus session must be redone
   (logout at app.globus.org, then `inference_auth_token.py authenticate --force`
   with an anl.gov / alcf.anl.gov identity); a refresh alone does not clear it.
+- Minerva (`/resource_server/minerva/api/v1`, `--cluster minerva`) on 2026-10-28:
+  muse-spark-bf16, nemotron-3-ultra, beam-1.0-bf16, inkling-bf16, gpt-oss-120b;
+  Metis: Mistral-Large-3-675B-Instruct-2512, gemma-4-31B-it, gpt-oss-120b.
 - Hot on Sophia on 2026-10-28 (`GET .../resource_server/sophia/jobs`): Llama 3.1
   8B/70B, gpt-oss-20b/120b (2 nodes), gemma-4-31B-it (2 nodes), gemma-3-27b-it.
   405B was not running.
@@ -300,6 +303,24 @@ English edit acceptance (§3.3 verifier):
 | gemma-4-31B-it | 79.7% | 74.0% |
 | Llama-3.1-70B | 69.3% | 45.0% |
 | gemma-3-27b-it | 69.0% | 36.3% |
+| muse-spark-bf16 (Minerva) | 82.7% | 71.0% |
+| inkling-bf16 (Minerva) | 84.7% | 69.3% |
+| beam-1.0-bf16 (Minerva) | 83.3% | 69.0% |
+| nemotron-3-ultra (Minerva) | 81.7% | 62.0% |
+| Mistral-Large-3-675B (Metis) | 61.7% | 48.0% |
+
+The Minerva models are reasoning models: at default effort a 20-item edit
+spends 12-14k reasoning tokens and ran out of a 7.2k budget on half the
+requests; `reasoning_effort: low` (now set for all reasoning models, with
++20k max_tokens headroom) cuts it to 1.6-3k (nemotron ~9k), 15 requests in
+~1 min at 8 workers. Acceptance overstates gpt-oss on tense: of 14 sampled
+items gpt-oss edited and muse skipped, ~10 gpt-oss edits are wrong in ways the
+verifier cannot see (event dated in the past made present, "Someone once gets",
+half-flipped sequence of tense "says ... would"). Where both accept, the
+variants are identical 190/203 (tense), 209/237 (negation); on the negation
+differences muse repairs negative-polarity items (anyone -> someone) that
+gpt-oss leaves stranded. Acceptance rate is not precision: the model choice
+needs the §5.6 human read.
 
 Translation of gpt-oss's accepted edits, per-language acceptance (§3.5):
 gpt-oss-120b negation 91-99%, tense 81-94%; gemma-4-31B returns null for most
