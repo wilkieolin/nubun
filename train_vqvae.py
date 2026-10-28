@@ -387,8 +387,12 @@ def main():
     # Training only needs ~4 GB of working set; capping at 30% leaves >80 GB
     # for the OS, page cache (mmap'd opus shards), and any other processes.
     if device.type == "cuda":
-        torch.cuda.set_per_process_memory_fraction(
-            float(os.environ.get("CUDA_MEM_FRACTION", "0.30")), device.index or 0)
+        frac = float(os.environ.get("CUDA_MEM_FRACTION", "0.30"))
+        torch.cuda.set_per_process_memory_fraction(frac, device.index or 0)
+        total_gb = torch.cuda.get_device_properties(device.index or 0).total_memory / 1e9
+        log(f"CUDA memory capped at {frac:.0%} of {total_gb:.0f} GB = {frac * total_gb:.0f} GB "
+            f"for this process (CUDA_MEM_FRACTION={frac}; a CUDA OOM below this while the "
+            f"system has memory free is the cap, not the machine).")
 
     # Phase 5: load the frozen sentence encoder that produces semantic targets.
     # Kept OUTSIDE the VQVAE module so DDP never tries to sync/train it. Every
