@@ -96,6 +96,13 @@ def slug(model):
     return model.replace("/", "--")
 
 
+def stage_name(stage, factor, model, translate_model=None):
+    """<stage>.<factor>.<model slug>; back-translation also names whose translations
+    it checks (<bt model>~<translate model>), so two translators never share files."""
+    name = f"{stage}.{factor}.{slug(model)}"
+    return name + f"~{slug(translate_model)}" if stage == "bt" else name
+
+
 def read_jsonl(path):
     if not os.path.exists(path):
         return []
@@ -601,7 +608,7 @@ def cmd_prepare(args, work):
                               chat_body(m, BT_SYSTEM, user, MAX_TOKENS["bt"], args.json_mode)))
     if not items:
         raise SystemExit("nothing to submit")
-    name = f"{meta['stage']}.{args.factor}.{slug(m)}"
+    name = stage_name(meta["stage"], args.factor, m, args.translate_model)
     paths = write_input(work, name, items, args.line_format, meta)
     if args.run:
         run_interactive(work, name, paths, m, args.cluster, args.workers, args.timeout, args.limit)
@@ -897,6 +904,26 @@ FLIP = {("negation", "add"): ("neg", "0", "1"), ("negation", "remove"): ("neg", 
         ("tense", "to_present"): ("tense", "past", "pres")}
 
 
+# negative-polarity items: licensed by the negation, ungrammatical or meaning-changing once it is
+# removed ("did even have", "exists anymore", "want anyone"); "even" only counts when it followed
+# the negation in the negated member
+NPI = {"any", "anyone", "anybody", "anything", "anywhere", "anymore", "ever", "either"}
+NEG_NPI_RE = re.compile(r"\b(not|n't|never|no)\s+(even|yet)\b|\bat all\b|\bany more\b", re.I)
+
+
+def stranded_npi(neg, aff):
+    """NPIs carried over from the negated member into the affirmative one (direction "remove":
+    the model deleted the negation but kept what it licensed)."""
+    wn = set(re.findall(r"[a-z']+", neg.lower()))
+    wa = set(re.findall(r"[a-z']+", aff.lower()))
+    hit = sorted(NPI & wn & wa)
+    for m in NEG_NPI_RE.finditer(neg):
+        tail = m.group(2) or m.group(0)
+        if tail.lower() in aff.lower():
+            hit.append(tail.lower())
+    return hit
+
+
 def verify_english(factor, direction, pairs, min_cos):
     """pairs: [(a, b)] -> [dict(accepted, reason, ...)] (README §3.3)."""
     docs = list(nlp().pipe([t for ab in pairs for t in ab], batch_size=128))
@@ -916,6 +943,8 @@ def verify_english(factor, direction, pairs, min_cos):
             reason = f"{attr}_no_flip({aa[attr]}->{ab[attr]})"
         elif factor == "negation" and not any(c.dep_ == "neg" for c in root_of(neg_doc).children):
             reason = "neg_not_main_clause"     # doc-level neg flipped, but not on the ROOT
+        elif factor == "negation" and direction == "remove" and stranded_npi(a, b):
+            reason = "npi_stranded"             # e.g. "didn't even" -> "did even"
         elif changed:
             reason = "changed_" + "+".join(changed)
         elif ed > budget:
@@ -978,7 +1007,9 @@ def verify_translation(factor, direction, a, b, min_ratio):
 
 def cmd_verify(args, work):
     stage = {"edit": "edit", "translate": "tr", "backtrans": "bt"}[args.stage]
-    name = f"{stage}.{args.factor}.{slug(args.model)}"
+    if stage == "bt" and not args.translate_model:
+        raise SystemExit("verify backtrans needs --translate-model")
+    name = stage_name(stage, args.factor, args.model, args.translate_model)
     meta_path = work.p("inputs", name + ".meta.json")
     meta = json.load(open(meta_path)) if os.path.exists(meta_path) else {}
     res = load_results(work, name)
@@ -1190,7 +1221,8 @@ def cmd_package(args, work):
         if factor == "tense" or args.require_bt_negation:
             if not args.backtrans_model:
                 raise SystemExit("--backtrans-model needed for tense")
-            bt_path = work.p("verified", f"bt.{factor}.{slug(args.backtrans_model)}.jsonl")
+            bt_path = work.p("verified", stage_name("bt", factor, args.backtrans_model,
+                                                    args.translate_model) + ".jsonl")
             bt_ok = {(r["pair_id"], r["lang"]) for r in read_jsonl(bt_path) if r["accepted"]}
         kept = 0
         for pid, t in trs.items():
@@ -1309,6 +1341,7 @@ def main():
     s.add_argument("--min-cos", type=float, default=0.3,
                    help="MiniLM floor; negation lowers paraphrase cosine by design (README 3.3)")
     s.add_argument("--min-ratio", type=float, default=0.6)
+    s.add_argument("--translate-model", help="backtrans: whose translations were back-translated")
 
     sub.add_parser("report")
 

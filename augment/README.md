@@ -337,3 +337,32 @@ uninformative. Negation 10% sample: back-translation agrees with the regex on
 Known leaks in accepted English pairs: stranded negative-polarity items on
 `remove` ("didn't even" -> "did even"), negating discourse frames ("I mean"),
 tense flips against explicit dates ("from 1995 to 2009").
+
+### Translation: muse and inkling vs gpt-oss (same source: gpt-oss's accepted edits)
+
+Negation = translation accepted (regex) / 246 source pairs; tense = translation
+accepted AND Llama 3.1 70B back-translation accepted / 239 source pairs.
+
+| | ar | de | es | fr | hi | ja | pt | ru | zh | mean |
+|---|---|---|---|---|---|---|---|---|---|---|
+| neg gpt-oss-120b | 95.9 | 97.6 | 99.2 | 91.1 | 98.8 | 95.1 | 99.2 | 97.2 | 98.8 | 97.0 |
+| neg muse-spark | 98.8 | 100 | 100 | 100 | 100 | 97.6 | 100 | 99.6 | 99.2 | 99.5 |
+| neg inkling | 98.4 | 99.2 | 100 | 100 | 100 | 96.7 | 100 | 99.6 | 99.6 | 99.3 |
+| tense gpt-oss-120b | 59.8 | 78.2 | 82.4 | 72.4 | 76.6 | 77.0 | 83.7 | 75.3 | 14.6 | 75.7 (no zh) |
+| tense muse-spark | 75.3 | 91.6 | 92.1 | 88.7 | 86.6 | 83.7 | 89.5 | 85.4 | 18.8 | 86.6 (no zh) |
+| tense inkling | 74.5 | 83.3 | 90.0 | 78.7 | 84.1 | 73.2 | 84.9 | 84.1 | 21.3 | 81.6 (no zh) |
+
+Read side by side, muse's translations are also more accurate (gpt-oss: ja
+記事12 for "article 12", de "Du wirst nicht im Voraus gesagt"). But muse
+translates broken English B members faithfully where gpt-oss returned null
+("His tomb exists anymore" -> fr "Son tombeau existe plus", which means the
+opposite), so gpt-oss's nulls were a hidden filter. Fixed upstream: the English
+verifier now rejects `remove` edits that keep a negative-polarity item licensed
+by the deleted negation (`npi_stranded`: any/anyone/anything/anymore/ever/either,
+"not even", "not yet", "at all", "any more"); 8/300 gpt-oss and 5/300 muse
+negation edits, ~2 of each false positives (free-choice "any other", "if ...
+any"). zh tense fails for every model (15-21%): drop zh from tense pairs.
+
+Back-translation files are now named `bt.<factor>.<bt model>~<translate model>`
+(`verify backtrans` and `package` take `--translate-model`), so two translators'
+back-translations no longer share inputs or results.
