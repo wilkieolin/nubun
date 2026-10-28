@@ -86,6 +86,8 @@ TERMINAL = {"completed", "failed", "cancelled", "expired"}
 TIME_ADVERBS = {"yesterday", "tomorrow", "ago", "last", "next", "now", "currently", "soon"}
 QUOTE_RE = re.compile(r"[\"“”„«»「」『』‘]|(^|\s)'|'(\s|$)")
 URL_RE = re.compile(r"https?://|www\.|\.(com|org|net|html?)\b", re.I)
+# subtitle register that the edit models mishandle: OCR "l" for "I", got to/gotta, ain't, ...
+COLLOQ_RE = re.compile(r"\bl\b|\b(gotta|gonna|wanna|ain't|got to|y'all|kinda|sorta)\b", re.I)
 
 
 # ---------------------------------------------------------------- small utils
@@ -182,10 +184,37 @@ class Work:
 
 
 # ---------------------------------------------------------------- ALCF client
-def access_token():
-    tok = os.environ.get("ALCF_ACCESS_TOKEN")
+AUTH_HELPER = os.environ.get("ALCF_AUTH_HELPER", os.path.expanduser("~/inference_auth_token.py"))
+_token = {"value": None, "at": 0.0}
+
+
+def _helper_token():
+    """Token from ALCF's inference_auth_token.py (refreshes itself; needs globus_sdk)."""
+    if not os.path.exists(AUTH_HELPER):
+        return None
+    pys = [os.environ.get("ALCF_AUTH_PYTHON"), sys.executable,
+           os.path.expanduser("~/miniconda3/envs/globus_env/bin/python")]
+    for py in filter(None, pys):
+        if not os.path.exists(py):
+            continue
+        r = subprocess.run([py, AUTH_HELPER, "get_access_token"], capture_output=True, text=True)
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip().splitlines()[-1].strip()
+    return None
+
+
+def access_token(refresh=False):
+    """Cached 10 min; the helper is preferred over env vars so 48 h expiry is handled."""
+    if _token["value"] and not refresh and time.time() - _token["at"] < 600:
+        return _token["value"]
+    tok = _helper_token() or os.environ.get("ALCF_ACCESS_TOKEN") or os.environ.get("ALCF_BEARER_TOKEN")
     if tok:
-        return tok.strip()
+        _token.update(value=tok.strip(), at=time.time())
+        return _token["value"]
+    return _legacy_token()
+
+
+def _legacy_token():
     if shutil.which("alcf-tokens"):
         out = subprocess.run(["alcf-tokens", "get-token", "inference"], capture_output=True,
                              text=True, check=True).stdout.strip()
@@ -199,8 +228,8 @@ def access_token():
             return get_access_token()
     except ImportError:
         pass
-    raise SystemExit("no ALCF token: set ALCF_ACCESS_TOKEN, or install alcf-tokens "
-                     "(alcf-tokens get-token inference)")
+    raise SystemExit(f"no ALCF token: {AUTH_HELPER} (python inference_auth_token.py authenticate), "
+                     "ALCF_ACCESS_TOKEN / ALCF_BEARER_TOKEN, or alcf-tokens")
 
 
 def api(method, url, body=None):
@@ -239,8 +268,9 @@ def chat_body(model, system, user, max_tokens, json_mode):
                          {"role": "user", "content": user}]}
     if json_mode:
         body["response_format"] = {"type": "json_object"}
-    if "gpt-oss" in model:
-        body["reasoning_effort"] = "low"
+    if "gpt-oss" in model:          # reasoning tokens count against max_tokens; low effort
+        body["reasoning_effort"] = "low"  # still spends 1-3k on a 20-item edit
+        body["max_tokens"] = max_tokens + 4000
     return body
 
 
@@ -418,9 +448,11 @@ def text_prefilter(t):
     letters = [c for c in t if c.isalpha()]
     if len(letters) < 10 or sum(c.isupper() for c in letters) > 0.6 * len(letters):
         return False                                    # all-caps headline
+    if COLLOQ_RE.search(t):
+        return False
     n = len(t.split())
-    return (5 <= n <= 30 and t[0].isupper() and t[-1] in ".!?"
-            and not t.endswith("..") and "…" not in t)          # trailing ellipsis: fragment
+    return (5 <= n <= 30 and t[0].isupper() and t[-1] in ".!"   # no questions: rhetorical/tag
+            and ".." not in t and "--" not in t and "…" not in t)   # ellipsis/dash: fragments
 
 
 def classify(doc):
@@ -436,6 +468,8 @@ def classify(doc):
         return None, {}
     if not any("Fin" in t.morph.get("VerbForm") for t in [root, *aux]):
         return None, {}
+    if any("Imp" in t.morph.get("Mood") for t in [root, *aux]) or any(t.dep_ == "intj" for t in doc):
+        return None, {}                                  # imperatives; "Look, ...", "Okay, uh"
     a = doc_attributes(doc)
     if a["tense"] == "none":
         return None, {}
@@ -565,7 +599,9 @@ def cmd_prepare(args, work):
         raise SystemExit("nothing to submit")
     name = f"{meta['stage']}.{args.factor}.{slug(m)}"
     paths = write_input(work, name, items, args.line_format, meta)
-    if args.submit:
+    if args.run:
+        run_interactive(work, name, paths, m, args.cluster, args.workers, args.timeout, args.limit)
+    elif args.submit:
         for p in paths:
             create_batch(work, m, p, {"name": name, "stage": meta["stage"], "factor": args.factor})
     elif work.remote != work.root:
@@ -611,7 +647,7 @@ def cmd_submit(args, work):
 def refresh_status(work):
     rows = []
     for bid, s in work.latest_submissions().items():
-        if s.get("status") not in TERMINAL:
+        if s.get("status") not in TERMINAL and s.get("mode") != "interactive":
             r = api("GET", f"{BATCH_URL}/{bid}")
             st = str(r.get("status", "unknown")).lower()
             if st != s.get("status"):
@@ -655,6 +691,130 @@ def cmd_collect(args, work):
             continue
         shutil.copyfile(local, dst)
         print(f"  {bid}: {sum(1 for _ in open(dst))} result lines -> {dst}")
+
+
+# ---------------------------------------------------------------- interactive runner
+CHAT_URL = {"sophia": API + "/sophia/vllm/v1/chat/completions",
+            "minerva": API + "/minerva/api/v1/chat/completions",
+            "metis": API + "/metis/api/v1/chat/completions"}
+RETRY_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}
+
+
+def chat_once(url, body, timeout, retries=6):
+    """POST one chat body -> (http status, response json or {"error"}). Retries 429/5xx/timeouts."""
+    import requests
+    delay, err = 5.0, None
+    for attempt in range(retries + 1):
+        try:
+            r = requests.post(url, json=body, timeout=timeout,
+                              headers={"Authorization": f"Bearer {access_token(refresh=attempt > 0 and err == 401)}"})
+            if r.status_code == 200:
+                return 200, r.json()
+            err = r.status_code
+            if r.status_code not in RETRY_STATUS | {401} or (r.status_code == 401 and attempt > 1):
+                return r.status_code, {"error": r.text[:2000]}
+            msg = r.text[:300]
+        except (requests.Timeout, requests.ConnectionError) as e:
+            err, msg = "timeout", str(e)[:300]
+        except ValueError as e:
+            err, msg = "bad_json", str(e)[:300]
+        if attempt < retries:
+            time.sleep(delay)
+            delay = min(delay * 2, 120)
+    return err, {"error": msg}
+
+
+def input_digest(paths):
+    h = hashlib.sha1()
+    for p in paths:
+        with open(p, "rb") as f:
+            h.update(f.read())
+    return h.hexdigest()[:8]
+
+
+def run_interactive(work, name, paths, model, cluster, workers, timeout, limit=None):
+    """Send every request line of `paths` to the chat endpoint; resumable.
+
+    Results go to results/<run_id>.results.jsonl in the OpenAI batch result shape
+    ({"custom_id", "response": {"status_code", "body"}, "error"}), registered in
+    submissions.jsonl as a completed batch, so verify/report read them unchanged.
+    run_id changes with the input content, so an edited prompt starts a fresh run.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    run_id = f"local-{name}-{input_digest(paths)}"
+    dst = work.p("results", f"{run_id}.results.jsonl")
+    done = {r["custom_id"] for r in read_jsonl(dst)
+            if (r.get("response") or {}).get("status_code") == 200}
+    lines = []
+    for p in paths:
+        for rec in read_jsonl(p):
+            cid, body = (rec["custom_id"], rec["body"]) if "body" in rec else (None, rec)
+            if cid is None:
+                raise SystemExit(f"{p}: body-only lines carry no custom_id; prepare with "
+                                 "--line-format openai to run interactively")
+            if cid not in done:
+                lines.append((cid, {**body, "model": model}))
+    if limit:
+        lines = lines[:limit]
+    subs = work.latest_submissions()
+    if run_id not in subs:
+        append_jsonl(work.submissions, {
+            "batch_id": run_id, "model": model, "input_file": paths[0], "name": name,
+            "mode": "interactive", "cluster": cluster, "status": "running",
+            "submitted_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+    print(f"{run_id}: {len(done)} done, {len(lines)} to send on {model} ({cluster}, {workers} workers)")
+    url = CHAT_URL[cluster]
+    t0, n_ok, n_err, toks, lat = time.time(), 0, 0, 0, []
+    with open(dst, "a") as out, ThreadPoolExecutor(workers) as pool:
+        futs = {}
+        for cid, body in lines:
+            futs[pool.submit(lambda b=body: (time.time(), chat_once(url, b, timeout)))] = cid
+        for k, fut in enumerate(as_completed(futs), 1):
+            cid = futs[fut]
+            t_start, (status, resp) = fut.result()
+            lat.append(time.time() - t_start)
+            ok = status == 200
+            n_ok += ok
+            n_err += not ok
+            toks += ((resp.get("usage") or {}).get("completion_tokens") or 0) if ok else 0
+            out.write(json.dumps({"custom_id": cid,
+                                  "response": {"status_code": status, "body": resp if ok else None},
+                                  "error": None if ok else resp.get("error")},
+                                 ensure_ascii=False) + "\n")
+            out.flush()
+            if k % max(1, len(lines) // 20) == 0 or k == len(lines):
+                el = time.time() - t0
+                print(f"  {k}/{len(lines)}  ok {n_ok} err {n_err}  {el:.0f}s  "
+                      f"{toks / max(el, 1e-9):.0f} out tok/s  median latency "
+                      f"{sorted(lat)[len(lat) // 2]:.1f}s", flush=True)
+    el = time.time() - t0
+    metrics = {"mode": "interactive", "model": model, "cluster": cluster, "workers": workers,
+               "sent": len(lines), "ok": n_ok, "errors": n_err, "wall_s": round(el, 1),
+               "completion_tokens": toks, "out_tok_per_s": round(toks / max(el, 1e-9), 1),
+               "median_latency_s": round(sorted(lat)[len(lat) // 2], 2) if lat else None}
+    with open(work.p("results", f"{run_id}.result.json"), "w") as f:
+        json.dump(metrics, f, indent=1)
+    remaining = len(lines) - n_ok
+    append_jsonl(work.submissions, {"batch_id": run_id,
+                                    "status": "completed" if remaining == 0 else "partial",
+                                    "metrics": metrics})
+    if n_err:
+        errs = Counter(str(r.get("response", {}).get("status_code")) for r in read_jsonl(dst)
+                       if r.get("response", {}).get("status_code") != 200)
+        print(f"  {n_err} failed this pass ({dict(errs)} in file); re-run the same command to retry them")
+    return run_id
+
+
+def cmd_run(args, work):
+    path = os.path.abspath(args.input)
+    meta_path = re.sub(r"(\.part\d+)?\.jsonl$", ".meta.json", path)
+    meta = json.load(open(meta_path)) if os.path.exists(meta_path) else {}
+    model = args.model or meta.get("model")
+    if not model:
+        raise SystemExit("--model needed (no .meta.json next to the input)")
+    parts = [work.p("inputs", p) for p in meta.get("parts", [])] or [path]
+    run_interactive(work, meta.get("name", os.path.basename(path)[:-6]), parts, model,
+                    args.cluster, args.workers, args.timeout, args.limit)
 
 
 # ---------------------------------------------------------------- results parsing
@@ -860,10 +1020,10 @@ def verify_edit(args, work, res):
             r["reason"] = "missing_item"
         else:
             r["op"], r["b"] = it.get("op"), it.get("variant")
-            if r["op"] == "skip":
+            # the op label is advisory (models mislabel correct edits); the verifier decides
+            r["op_label_ok"] = r["op"] == c["direction"]
+            if r["op"] == "skip" or (r["op"] not in DIRECTIONS[args.factor] and not r["b"]):
                 r["reason"] = "skip"
-            elif r["op"] != c["direction"]:
-                r["reason"] = f"op_mismatch({r['op']})"
             elif not isinstance(r["b"], str) or not r["b"].strip():
                 r["reason"] = "no_variant"
             else:
@@ -1076,6 +1236,13 @@ def cmd_package(args, work):
 
 
 # ---------------------------------------------------------------- main
+def add_run_args(s):
+    s.add_argument("--cluster", choices=sorted(CHAT_URL), default="sophia")
+    s.add_argument("--workers", type=int, default=8, help="concurrent requests")
+    s.add_argument("--timeout", type=float, default=600, help="per-request seconds")
+    s.add_argument("--limit", type=int, help="send at most this many requests (testing)")
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0],
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1107,7 +1274,14 @@ def main():
                    help="backtrans negation: fraction of pairs (tense: all)")
     s.add_argument("--json-mode", action="store_true", help="add response_format json_object")
     s.add_argument("--line-format", choices=["openai", "body"], default="openai")
-    s.add_argument("--submit", action="store_true")
+    s.add_argument("--submit", action="store_true", help="create an ALCF batch (inputs on /eagle)")
+    s.add_argument("--run", action="store_true", help="send interactively (no /eagle needed)")
+    add_run_args(s)
+
+    s = sub.add_parser("run", help="send a prepared input to the interactive endpoint (resumable)")
+    s.add_argument("--input", required=True)
+    s.add_argument("--model")
+    add_run_args(s)
 
     s = sub.add_parser("submit")
     s.add_argument("--input", required=True)
@@ -1128,7 +1302,8 @@ def main():
     s.add_argument("stage", choices=["edit", "translate", "backtrans"])
     s.add_argument("--factor", choices=FACTORS, required=True)
     s.add_argument("--model", required=True)
-    s.add_argument("--min-cos", type=float, default=0.6)
+    s.add_argument("--min-cos", type=float, default=0.3,
+                   help="MiniLM floor; negation lowers paraphrase cosine by design (README 3.3)")
     s.add_argument("--min-ratio", type=float, default=0.6)
 
     sub.add_parser("report")
@@ -1147,7 +1322,7 @@ def main():
     args = p.parse_args()
     work = Work(args.work, args.remote_root)
     {"candidates": cmd_candidates, "smoke": cmd_smoke, "prepare": cmd_prepare,
-     "submit": cmd_submit, "status": cmd_status, "collect": cmd_collect,
+     "run": cmd_run, "submit": cmd_submit, "status": cmd_status, "collect": cmd_collect,
      "inspect": cmd_inspect, "verify": cmd_verify, "report": cmd_report,
      "package": cmd_package}[args.cmd](args, work)
 

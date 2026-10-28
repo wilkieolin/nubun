@@ -1,9 +1,11 @@
 # Minimal-pair augmentation: specification (Phase 9, branch 2)
 
-Status: implemented as `minpairs.py` (2026-10-28), tested offline against
-simulated batch output; the §4 smoke batch has not run yet. The script drives
-the ALCF inference batch service through the stages below (`python
-augment/minpairs.py --help` for the subcommands); this document is its target.
+Status: implemented as `minpairs.py`; pilot run interactively on 2026-10-28
+(results in §9). The script drives the ALCF inference service through the
+stages below (`python augment/minpairs.py --help` for the subcommands); this
+document is its target. **Interactive mode (`run`, `prepare ... --run`) is the
+default path**: it needs only the token, not `/eagle`; the batch path (§4) is
+kept but unused.
 
 ## 1. Why
 
@@ -154,7 +156,31 @@ batch, a penalty on the number of slots whose code stack differs between the
 members beyond a budget of one or two, and a consistency term on share pairs)
 is specified in `PHASE9.md` §8 branch 2 and is not part of this directory.
 
-## 4. ALCF batch service
+## 4a. ALCF interactive mode (used)
+
+`prepare <stage> ... --run` (or `run --input inputs/<name>.jsonl`) POSTs each
+request line's body to `https://inference-api.alcf.anl.gov/resource_server/sophia/vllm/v1/chat/completions`
+with `--workers` concurrent requests, retrying 429/5xx/timeouts. Results are
+written as `results/local-<name>-<input sha>.results.jsonl` in the OpenAI batch
+result shape and registered in `submissions.jsonl`, so `verify`/`report` are
+unchanged. Re-running the same command resumes (skips custom_ids already
+answered); editing a prompt changes the input digest and starts a fresh run.
+
+- Token: `~/inference_auth_token.py get_access_token` (run with a Python that has
+  `globus_sdk`, e.g. the `globus_env` conda env; override with `ALCF_AUTH_PYTHON`),
+  cached 10 min; falls back to `ALCF_ACCESS_TOKEN` / `ALCF_BEARER_TOKEN`. A 401
+  "high-assurance timeout" means the Globus session must be redone
+  (logout at app.globus.org, then `inference_auth_token.py authenticate --force`
+  with an anl.gov / alcf.anl.gov identity); a refresh alone does not clear it.
+- Hot on Sophia on 2026-10-28 (`GET .../resource_server/sophia/jobs`): Llama 3.1
+  8B/70B, gpt-oss-20b/120b (2 nodes), gemma-4-31B-it (2 nodes), gemma-3-27b-it.
+  405B was not running.
+- gpt-oss: `reasoning_effort: low` still spends 1-3k reasoning tokens on a
+  20-item edit, which count against `max_tokens`; `chat_body` adds 4000.
+- Measured: gpt-oss-120b 8-16 workers 800-1300 out tok/s; Llama 3.1 70B ~27
+  tok/s per stream, ~190 tok/s at 8-16 workers. Pilot stages take 1-7 min each.
+
+## 4. ALCF batch service (not used)
 
 From docs.alcf.anl.gov/services/inference-endpoints/batch/ and /models/:
 
@@ -256,3 +282,37 @@ dollars with batch discounts; on a small hot model it is tens.
   restricted to the eight languages with inflectional tense.
 - How many share pairs the consistency term needs, and whether they should be
   drawn from opus100 or from the generated pairs' members.
+
+## 9. Pilot results (2026-10-28, 300 candidates per factor)
+
+Candidate filter additions after a first look (opus100 English is mostly
+subtitles): no questions, no `..`/`--`/ellipsis, no imperatives (spaCy
+Mood=Imp), no interjections, no OCR "l"/gotta/gonna/ain't/got to. The model's
+`op` label is advisory (Llama mislabels correct edits); the verifier decides.
+`--min-cos` lowered 0.6 -> 0.3: negation lowers the paraphrase cosine by
+design (0.6 rejected 42/300 correct Llama pairs).
+
+English edit acceptance (§3.3 verifier):
+
+| model | negation | tense |
+|---|---|---|
+| gpt-oss-120b | 82.0% | 79.7% |
+| gemma-4-31B-it | 79.7% | 74.0% |
+| Llama-3.1-70B | 69.3% | 45.0% |
+| gemma-3-27b-it | 69.0% | 36.3% |
+
+Translation of gpt-oss's accepted edits, per-language acceptance (§3.5):
+gpt-oss-120b negation 91-99%, tense 81-94%; gemma-4-31B returns null for most
+Arabic (2-6%) and many zh/hi tense items, and its zh negation edits are
+sometimes ungrammatical. gpt-oss-120b chosen for both stages.
+
+Back-translation (Llama 3.1 70B, independent family) of gpt-oss translations:
+tense 74-90% in eight languages, **zh 17%**: sentence-final 了 on statives
+marks change of state ("doesn't like Russians anymore"), not past, so the zh
+tense pairs are wrong and the soft marker check (196/202 "ok") is
+uninformative. Negation 10% sample: back-translation agrees with the regex on
+203/233 (87%), disagreements mostly `neg_not_main_clause` (to inspect).
+
+Known leaks in accepted English pairs: stranded negative-polarity items on
+`remove` ("didn't even" -> "did even"), negating discourse frames ("I mean"),
+tense flips against explicit dates ("from 1995 to 2009").
