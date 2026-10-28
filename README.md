@@ -15,21 +15,22 @@ decoder regenerates the sentence in any target language from the codes alone.
 The codes behave as a cross-lingual interlingua: one level-0 code fires for
 "water", another for "we", another for "not", in every language and script.
 
-## Status (2026-10-19, after Phase 9 workstream A and its cross-seed checks)
+## Status (2026-10-28, after Phase 9 workstream A on three seeds)
 
 | property of the goal | state | evidence |
 |---|---|---|
-| codes carry meaning across languages | **strong** | free-generation round-trip meaning 0.583 (seed 42) and 0.651 (seed 2) of a 0.861 gold ceiling, so the seed error bar is ~0.07; interlingua Jaccard lift +0.278 on all 45 language pairs; same slot, same level-0 code across translations 53% vs 10% chance; code cost varies 15% across languages, text 42% |
-| codes are interpretable radicals | **good, seed-specific, small stable core** | level-0 inventories (`RADICALS.md`; the 500k model's in `PHASE9.md` §7 A1); two converged runs differing only in seed share 19% of their level-0 radicals, and the content radicals among them decode to the same five concepts in both (negation, today, child, health, European Union; `PHASE9.md` §7 A4) |
+| codes carry meaning across languages | **strong** | free-generation round-trip meaning 0.583 / 0.651 / 0.647 for three seeds of one recipe (sd 0.038) against a 0.861 gold ceiling; interlingua Jaccard lift +0.278 on all 45 language pairs; same slot, same level-0 code across translations 53% vs 10% chance; code cost varies 15% across languages, text 42% |
+| codes are interpretable radicals | **good, seed-specific, small stable core** | level-0 inventories (`RADICALS.md`; the 500k model's in `PHASE9.md` §7 A1); runs differing only in seed share 14-27% of their level-0 radicals, a fixed set across three seeds whose content members decode to the same concepts (European Union, health, an international-body radical, weakly child; `PHASE9.md` §7 A4); the other ~95% is seed-specific |
 | representation is sparse | **not yet** | 64 fixed slots, 3584 raw bits/sentence; ~8.5 distinct level-0 codes and ~17 distinct stacks per sentence are used; a learned prior needs 49-83 bits for levels 0-1 |
-| radicals compose | **weak, not established** | the code is positional (keep RVQ), but additive composition explains 10-14% of it and topographic similarity falls as round-trip rises; identical on both seeds; no held-out-combination or substitution test yet |
+| radicals compose | **weak, not established** | the code is positional (keep RVQ), but additive composition explains 10-14% of it and topographic similarity falls as round-trip rises; identical on three seeds; no held-out-combination or substitution test yet |
 | human-readable glyph layer | **not started** | no rendering, no reading, no legibility test; must be per-model until the inventory converges |
-| AI reasoning substrate | **measured, failing** | full 8-level code costs 1.3-1.7x (seed 42) to 2.1-2.2x (seed 2) the bits of the text it encodes; levels 0-1 cost 0.22-0.34x at 40% of gold fidelity |
+| AI reasoning substrate | **measured, failing** | full 8-level code costs 1.3x to 2.5x the bits of the text it encodes depending on seed; levels 0-1 cost 0.22-0.39x at 40% of gold fidelity |
 
 Models: `model_dir/long-b128-seed2-20261014T160630Z/nubun_cs_step500000.eval.pt`
 (CS-3, seed 2, d_model 384, RVQ 8x128, 500k steps at B=128, **round-trip
 0.651, best model**) and `model_dir/long-b128-20261010T042150Z/nubun_cs_step500000.eval.pt`
-(same recipe, seed 42, 0.583). A third seed is training. Best GB10 model:
+(same recipe, seed 42, 0.583) and `model_dir/long-b128-seed3-20261019T210243Z/nubun_cs_step500000.eval.pt`
+(seed 3, 0.647). Best GB10 model:
 `data/phase8_C1_d512_cos130k_step130000.pt` (0.5045).
 
 Where to go next: `PHASE9.md` §8 (consolidated status and the two-branch plan:

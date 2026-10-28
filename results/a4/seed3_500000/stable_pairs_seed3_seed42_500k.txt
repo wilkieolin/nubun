@@ -1,0 +1,16 @@
+A = model_dir/long-b128-seed3-20261019T210243Z/nubun_cs_step500000.eval.pt (step 500000)
+B = model_dir/long-b128-20261010T042150Z/nubun_cs_step500000.eval.pt (step 500000)
+11 level-0 pairs with sentence-Jaccard >= 0.5; decoded codes: A 128, B 128
+
+    J    A  useA%    B  useB%  aggregate tokens (A | B)
+ 0.76  109   2.81   43   1.56  На mi fois n ता वि  |  hey sich has se لل ية
+ 0.76   86   1.40   35   2.02  -5 sobre has जान إلى д  |  Europäische Union European 0 человека 会议
+ 0.68   29   3.13   29   1.74  texto время sich no самое nada  |  importante do because कुछ autres Möglichkeit
+ 0.63  101   3.67   62   1.33  hey on 一个 ني из ब  |  1 ने mos ̈ де 者
+ 0.61   53   5.97  118   1.34  that его 里 al 人 ю  |  t った качестве us 有 convertido
+ 0.59   76   0.48  111   0.59  s -9 dos by 这些 las  |  会 importante する ल тем issue
+ 0.57   13   0.45  104   0.54  t ني هي этом women know  |  ني детей again enfants monde filhos
+ 0.57   33   4.17   73   4.06  médico 克 помощи her peligro caso  |  ment ten nur 意 hombre अमर
+ 0.52   16   3.67   75   0.97  et who his 进展 sido или  |  بعد ما new 都 但 had
+ 0.52   63   2.81   27   0.98  al sonido ur dos 的 following  |  yeah कार फ बे च own
+ 0.51  127   1.04  109   1.59  possível घटना вас Frage 地 ै  |  as 都 ل problemas факта questão

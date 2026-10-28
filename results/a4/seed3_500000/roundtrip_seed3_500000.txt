@@ -1,0 +1,18 @@
+Loading checkpoint: model_dir/long-b128-seed3-20261019T210243Z/nubun_cs_step500000.eval.pt
+  trained for 500000 steps
+  val set: (200, 10)
+Loading semantic encoder: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+
+GOLD ceiling (src vs gold parallel target):
+  same=1.0000  cross=0.8614   (same=identity~1.0 sanity; cross=translation ceiling)
+
+Free-generation round-trip meaning (langs=en,zh,es,fr,ar,ru, max_gen_len=48, rvq_depth=all)
+  real      same=0.6900  cross=0.6474
+  shuffle   same=0.0451  cross=0.0454
+  zero      same=0.0341  cross=0.0346
+
+MEANING shuffle-gap (real - shuffle):
+  same : +0.6449
+  cross: +0.6020
+  (KPI. >= ~0.10 => codes carry meaning under free generation;
+   ~0 => posterior collapse is real, not a teacher-forcing artifact.)

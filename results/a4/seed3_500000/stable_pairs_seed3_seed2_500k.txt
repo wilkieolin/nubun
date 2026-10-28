@@ -1,0 +1,26 @@
+A = model_dir/long-b128-seed3-20261019T210243Z/nubun_cs_step500000.eval.pt (step 500000)
+B = model_dir/long-b128-seed2-20261014T160630Z/nubun_cs_step500000.eval.pt (step 500000)
+21 level-0 pairs with sentence-Jaccard >= 0.5; decoded codes: A 128, B 128
+
+    J    A  useA%    B  useB%  aggregate tokens (A | B)
+ 0.86   53   5.97   89   4.71  that его 里 al 人 ю  |  ́ ни 中 एच ओ sur
+ 0.83   86   1.40  114   1.37  -5 sobre has जान إلى д  |  क Europäische Union 长期 Consejo ं
+ 0.82   16   3.67  120   4.14  et who his 进展 sido или  |  e و avec или or sobre
+ 0.78   29   3.13   86   3.50  texto время sich no самое nada  |  por una für día क्योंकि qui
+ 0.76   13   0.45   33   0.57  t ني هي этом women know  |  子 ـ gemacht hacer niño eine
+ 0.76  109   2.81   38   1.56  На mi fois n ता वि  |  today ة ها الم else सि
+ 0.76   14   1.09  125   0.98  н â -0 这 o les  |  ́ t want im doesn here
+ 0.74    8   2.18   84   2.61  तरह encore する ele Ver makes  |  s е gewesen 事 他 किया
+ 0.72  101   3.67   53   4.07  hey on 一个 ني из ब  |  п são هذه बारे ित gaz
+ 0.68   62   1.50   88   1.88  问 auf мне रहे इसके было  |  s se ser إلى ين werden
+ 0.67   76   0.48    3   0.74  s -9 dos by 这些 las  |  ने United du alt Jahre 了
+ 0.67   44   0.20   80   0.21  era be girl 的情况下 所 列  |  a वह 说 gewesen Mann ne
+ 0.65   33   4.17   42   3.66  médico 克 помощи her peligro caso  |  ـ 男 mesmo Frau negative 没有
+ 0.64   46   0.25  126   0.24  money following ات 金 tem gegangen  |  nosso n below money 金 table
+ 0.63   63   2.81   98   2.74  al sonido ur dos 的 following  |  Sr hey sur nom ao o
+ 0.61   35   0.54   67   0.59  バラ money деньги 金 u Europe  |  t 0 ung 八 o На
+ 0.55   98   3.00  118   3.14  वी أجل worden last young who  |  hey である д 零 año при
+ 0.55   52   1.15    2   0.90  कम れ down 发 es life  |  us ने data sinal one 会
+ 0.53  118   1.64  116   2.75  克 يا L году と o  |  es score до г 林 جي
+ 0.52  113   0.80  121   1.10  hijos ni 一个 ना 过 Kind  |  ю niño Los paar 也是 al
+ 0.51   18   3.20  113   2.63  DIE ÜR िए ni а развития  |  ـ m sich possible big 3

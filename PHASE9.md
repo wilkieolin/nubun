@@ -19,21 +19,21 @@ first two with a multilingual VQ-VAE. The other four are the work of Phase 9.
 
 | # | property | state | evidence |
 |---|---|---|---|
-| 1 | codes carry meaning, independent of language | **strong** | round-trip cross-lingual meaning 0.583 (seed 42) and **0.651** (seed 2, same recipe; gold 0.861, shuffle 0.044), so the seed error bar on round-trip is ~0.07 (A2); interlingua Jaccard lift +0.278 on all 45 pairs; same slot holds the same level-0 code across translations 53% vs 10% chance (A6); code cost varies 15% across languages where text varies 42% (A5) |
-| 2 | codes are interpretable radicals | **good, seed-specific, with a small stable core** | level-0 inventories (pronoun paradigm, negation, modals, dozens of content concepts) in `RADICALS.md`; only 19% of a converged run's level-0 radicals recur in a second seed (§7 A4), and of those the content radicals that recur decode to the same five concepts in both models: negation, today/date, child, health, European Union (~7% of the inventory); the rest is a property of one run |
+| 1 | codes carry meaning, independent of language | **strong** | round-trip cross-lingual meaning 0.583 / **0.651** / 0.647 for seeds 42 / 2 / 3 of one recipe (mean 0.627, sd 0.038; gold 0.861, shuffle 0.044), identical 0.346-0.348 from levels 0-1 in all three (A2); interlingua Jaccard lift +0.278 on all 45 pairs; same slot holds the same level-0 code across translations 53% vs 10% chance (A6); code cost varies 15% across languages where text varies 42% (A5) |
+| 2 | codes are interpretable radicals | **good, seed-specific, with a small stable core** | level-0 inventories (pronoun paradigm, negation, modals, dozens of content concepts) in `RADICALS.md`; only 19% of a converged run's level-0 radicals recur in a second seed (§7 A4), and the content radicals that recur in all three seeds (A4, 2026-10-28) decode to the same concepts: European Union, health, an international-body/council radical and (weakly) child, about 4-5% of the inventory; negation and date, shared by seeds 2 and 42, are split differently by seed 3; the rest is a property of one run |
 | 3 | the representation is sparse | **no** | 64 fixed slots = 3584 raw bits/sentence, but only ~8.5 distinct level-0 codes and ~17 distinct stacks per sentence are used (§2); under a learned prior the full code costs 280-484 bits, levels 0-1 49-83 (A5); no length or sparsity pressure exists in the loss |
-| 4 | radicals compose | **weak, not established** | posdis excess +0.027 and 3x bosdis at 500k (the code is positional, keep RVQ); but additive composition explains only 10-14% of the code vector (TRE 0.86-0.90) and topographic similarity fell from 0.20 to 0.13 as round-trip rose (A3); every A3 number is reproduced by the second seed within noise, so this is a property of the recipe, not of one run; depth >= 2 is language-specific (A6); no held-out-combination or substitution test yet (C) |
+| 4 | radicals compose | **weak, not established** | posdis excess +0.027 and 3x bosdis at 500k (the code is positional, keep RVQ); but additive composition explains only 10-14% of the code vector (TRE 0.86-0.90) and topographic similarity fell from 0.20 to 0.13 as round-trip rose (A3); every A3 number is reproduced by seeds 2 and 3 within noise, so this is a property of the recipe, not of one run; depth >= 2 is language-specific (A6); no held-out-combination or substitution test yet (C) |
 | 5 | human-readable glyph layer | **not started** | nothing renders a code to a glyph; no reading, no legibility or learnability test |
-| 6 | AI reasoning substrate | **measured, failing** | code prior trained (A5): the full 8-level code costs 1.3-1.7x (seed 42) to 2.1-2.2x (seed 2) the bits of the text it encodes and is lossy; levels 0-1 cost 0.22-0.34x at 40% of gold fidelity, levels 0-3 0.53-0.85x at 55-58%; the better-reconstructing seed has the costlier code; no LLM has seen Nubun codes |
+| 6 | AI reasoning substrate | **measured, failing** | code prior trained (A5): the full 8-level code costs 1.3x (seed 42) to 2.1x (seed 2) to 2.5x (seed 3) the bits of the text it encodes and is lossy; levels 0-1 cost 0.22-0.39x at 40% of gold fidelity, levels 0-3 0.53-0.99x at 55-58%; code cost varies 2x across seeds and not in step with fidelity; no LLM has seen Nubun codes |
 
 The honest summary (updated 2026-10-19, after workstream A and its cross-seed
 checks): **we have a working, cross-lingual discrete bottleneck whose level 0
 is interpretable; we do not yet have a character set.** The bottleneck is
 dense, its compositionality is weak and falling with training, its inventory is
-90% seed-specific, and its full code costs more bits than text. What is
+95% seed-specific (three seeds), and its full code costs more bits than text. What is
 seed-robust is everything about the meaning as a whole (round-trip, interlingua,
-the A3 metrics) plus a core of about half a dozen level-0 radicals for frequent,
-sharply bounded concepts. §8 is the consolidated status and the plan: confirm
+the A3 metrics) plus a core of three or four level-0 content radicals for
+frequent, sharply bounded concepts, confirmed on three seeds. §8 is the consolidated status and the plan: confirm
 with a third seed, then add the inductive bias (minimal pairs) that the
 identifiability argument of `LITERATURE.md` §3 turns out not to supply.
 
@@ -291,17 +291,24 @@ Decision fed: do models compute more cheaply or more faithfully over codes?
   recurring content radicals mean the same thing**: negation, today/date,
   child, health, European Union, plausibly numbers; about 7% of the
   inventory is a stable, meaningful core and the rest is seed-specific.
-  Phase 9 must add a mechanism that makes the inventory converge (§8, branch
-  2) or redefine the character set as per-model.
+  **Three seeds (2026-10-28): the core is a fixed set, and smaller.** Of
+  seed 3's 11 radicals recurring in seed 42, 10 also recur in seed 2 (about
+  3 expected if independent) and 8 close the triangle: four structural codes
+  plus European Union, health, an international-body radical and (weakly)
+  child. Negation is split over five level-0 codes in seed 3 and date is
+  below resolution. Stable content core: 3-4 of ~79 radicals. Phase 9 must
+  add a mechanism that makes the inventory converge (§8, branch 2) or
+  redefine the character set as per-model.
 - **Readable**: a learner reaches above-chance sentence glossing of specimen
   sentences within the 3,000-exposure budget. Fail: no learning curve.
 - **Substrate**: the code prior is materially more compressible than a text LM
   at equal round-trip fidelity, and the mixed code/text fine-tune does not
   lose accuracy relative to text-only. Fail: codes cost more bits than text.
-  **Interim (2026-10-13, §7 A5): FAIL for the full code** (1.3-1.7x text;
-  2.1-2.2x for the seed-2 model, which reconstructs better and pays for it);
-  the shallow code (levels 0-1, 0-3) costs 0.22-0.85x text but at 40-58% of
-  gold fidelity, and no equal-fidelity text baseline exists yet. The
+  **Interim (2026-10-13, §7 A5): FAIL for the full code** (1.3-1.7x text
+  for seed 42; 2.1-2.2x for seed 2; 2.5-2.6x for seed 3, which reconstructs
+  as well as seed 2 and costs more); the shallow code (levels 0-1, 0-3)
+  costs 0.22-0.99x text but at 40-58% of gold fidelity, and no
+  equal-fidelity text baseline exists yet. The
   fine-tune (E2) has not run.
 
 ## 6. Risks and the standing objections
@@ -345,23 +352,24 @@ field, and five named-entity presence flags. Controls: attributes shuffled at
 sentence level; meaning or code rows permuted. Level-0 numbers (excess = real
 minus shuffle):
 
-| level 0 | E3 @100k | C1 @130k | CS-3 @500k (seed 42) | CS-3 @500k seed 2 (2026-10-19) |
-|---|---|---|---|---|
-| posdis excess (slot specialises to one attribute) | +0.008 | +0.017 | **+0.027** | +0.032 |
-| bosdis excess (code count specialises) | **+0.020** | +0.018 | +0.009 | +0.009 |
-| MIG, bag / positional | 0.049 / 0.022 | 0.033 / 0.014 | 0.021 / 0.002 | 0.014 / 0.003 |
-| topsim, bag Jaccard vs MiniLM (perm ~0) | **0.20** | 0.19 | 0.13 | 0.10 |
-| TRE, additive, held-out 1-R^2 (perm 1.00) | **0.86** | 0.88 | 0.90 | 0.89 |
-| nPMI cross-language stability r (shuffled) | 0.57 (0.50) | 0.60 (0.50) | **0.67 (0.59)** | 0.66 (0.57) |
-| A6 level-0 bag Jaccard real / chance / kappa | 0.41 / 0.19 / 0.28 | 0.42 / 0.18 / 0.30 | 0.59 / 0.33 / **0.38** | n/a |
-| A6 same code in same slot, real / chance / kappa | 0.37 / 0.10 / 0.30 | 0.44 / 0.09 / 0.38 | 0.53 / 0.10 / **0.48** | n/a |
-| A6 depth-2 stack prefix bag kappa | 0.10 | 0.11 | 0.12 | n/a |
-| decode-probe codes strong in >=3 languages (A1) | **55** | 19 | 17 | n/a |
+| level 0 | E3 @100k | C1 @130k | CS-3 @500k (seed 42) | seed 2 (2026-10-19) | seed 3 (2026-10-28) |
+|---|---|---|---|---|---|
+| posdis excess (slot specialises to one attribute) | +0.008 | +0.017 | **+0.027** | +0.032 | +0.027 |
+| bosdis excess (code count specialises) | **+0.020** | +0.018 | +0.009 | +0.009 | +0.008 |
+| MIG, bag / positional | 0.049 / 0.022 | 0.033 / 0.014 | 0.021 / 0.002 | 0.014 / 0.003 | 0.014 / 0.003 |
+| topsim, bag Jaccard vs MiniLM (perm ~0) | **0.20** | 0.19 | 0.13 | 0.10 | 0.13 |
+| TRE, additive, held-out 1-R^2 (perm 1.00) | **0.86** | 0.88 | 0.90 | 0.89 | 0.89 |
+| nPMI cross-language stability r (shuffled) | 0.57 (0.50) | 0.60 (0.50) | **0.67 (0.59)** | 0.66 (0.57) | 0.65 (0.55) |
+| A6 level-0 bag Jaccard real / chance / kappa | 0.41 / 0.19 / 0.28 | 0.42 / 0.18 / 0.30 | 0.59 / 0.33 / **0.38** | n/a | n/a |
+| A6 same code in same slot, real / chance / kappa | 0.37 / 0.10 / 0.30 | 0.44 / 0.09 / 0.38 | 0.53 / 0.10 / **0.48** | n/a | n/a |
+| A6 depth-2 stack prefix bag kappa | 0.10 | 0.11 | 0.12 | n/a | n/a |
+| decode-probe codes strong in >=3 languages (A1) | **55** | 19 | 17 | n/a | n/a |
 
-The seed-2 column (`results/a4/seed2_500000/compositionality_cs3_seed2_500000.txt`)
-reproduces every seed-42 number within noise, with round-trip 0.07 higher:
-the weak-compositionality result is a property of the recipe, not of one run,
-and the extra fidelity of seed 2 did not buy any compositional structure.
+The seed-2 and seed-3 columns (`results/a4/seed{2,3}_500000/compositionality_*.txt`)
+reproduce every seed-42 number within noise, with round-trip 0.06-0.07
+higher: the weak-compositionality result is a property of the recipe, not of
+one run, and the extra fidelity of the other seeds did not buy any
+compositional structure.
 
 What this says:
 
@@ -436,6 +444,8 @@ checkpoint reproduces 0.5824 (0.5828 here, batch 64 instead of 16). New
 | seed 42: round-trip same-language | 0.237 | 0.351 | 0.490 | 0.612 |
 | seed 2 (2026-10-19): round-trip cross | n/a | 0.348 | 0.496 | **0.651** |
 | seed 2: round-trip same-language | n/a | 0.347 | 0.507 | 0.691 |
+| seed 3 (2026-10-28): round-trip cross | n/a | 0.346 | 0.500 | 0.647 |
+| seed 3: round-trip same-language | n/a | 0.348 | 0.521 | 0.690 |
 
 The seed-2 model (same recipe, `--seed 2`, logged recon 2.77 against 2.89)
 scores 0.651, +0.068 over seed 42 on the identical protocol
@@ -443,8 +453,12 @@ scores 0.651, +0.068 over seed 42 on the identical protocol
 controls are unchanged (0.042 / 0.034). Seed 2 is therefore the best Nubun
 model, and the difference between two seeds of one recipe is as large as
 several of the single-run lever comparisons in PHASE8 and above (E3 vs C1,
-100k vs 250k, width). Those comparisons carry an unmeasured ~0.07 error bar
-until a third seed gives a variance estimate (§8, branch 1).
+100k vs 250k, width). With seed 3 (`results/a4/seed3_500000/`) the three-seed mean is
+0.627 with standard deviation 0.038, and seed 42, the model every earlier
+comparison used, is the low outlier. Single-run differences under ~0.08
+are not established. **Levels 0-1 carry the same meaning in every seed**
+(0.346 / 0.348 / 0.346): the seed-to-seed difference in fidelity lives
+entirely in levels 2-7.
 
 - **Round-trip rose steadily and flattened only in the last 20k steps**
   (+0.003 from 480k to 500k), where the cosine LR reaches its floor; the
@@ -655,6 +669,29 @@ What this says:
   the FLORES news domain's dominant entity). Most of the dozens of content
   radicals in `RADICALS.md`-style inventories are seed-specific partitions of
   meaning space.
+- **Three seeds (2026-10-26 matching on this node, 2026-10-28 decode on the
+  GB10; `results/a4/stability_s3_500k_*.txt`, `pairs_seed3_*.json`,
+  `scripts/three_way_core.py`, `results/a4/seed3_500000/stable_pairs_*`).**
+  Seed 3 (500k, logged recon 2.97) shares 14% of its 79 active level-0
+  radicals with seed 42 and 27% with seed 2 (chance 6-8%; within-run 480k vs
+  500k control 90%). Of the 11 that recur in seed 42, 10 also recur in seed 2
+  (about 3 if recurrence were independent across pairs), and for 8 the
+  triangle closes (seed 3's partner in seed 42 and its partner in seed 2 are
+  matched to each other). **The core is a fixed set, not a pairwise
+  coincidence.** Its members: the universal fixed-slot filler and three
+  frequent structural codes, plus four content radicals: EUROPEAN UNION
+  (seed 3 code 86: Parlamento Europeo, Europea, 欧洲), HEALTH (33: médico,
+  peligro, помощи), the pair that was unreadable in two seeds, now readable
+  as an INTERNATIONAL BODY / COUNCIL radical (76: Consejo, 理事会, 安全,
+  internacional; seed 2's "United", seed 42's "会 issue"), and CHILD (13,
+  weak in seed 3's probe: women, house, school; unambiguous in the other
+  two). NEGATION did not reach three seeds: seed 3 carries it in five
+  level-0 codes (10, 15, 31, 50, 90, each with No / Не / nada / 不 / sin
+  among its top tokens), so no single footprint matches seed 42's code 60
+  (best J 0.30); the concept is present but factored differently. DATE (seed
+  42 code 79, 0.08% usage) is below the matching's resolution. Stable
+  content core across three seeds: 3-4 of ~79 radicals, 4-5% of the
+  inventory, two of them named entities of the FLORES news domain.
 - **Levels >= 1 share nothing across seeds**, which closes the question A6
   raised: the residual levels are both language-specific and seed-specific.
   Only level 0 is a candidate for a character inventory, and only part of it.
@@ -719,6 +756,9 @@ uniform choice among the 148k unseen types). Round-trip from A2.
 | seed 2, levels 0-1 (2026-10-19) | 55.1 | 127.2 | 0.34 | 0.348 | 40% |
 | seed 2, levels 0-3 | 139.2 | 320.8 | 0.85 | 0.496 | 58% |
 | seed 2, levels 0-7 | 363.3 | 791.8 | 2.09 | 0.651 | 76% |
+| seed 3, levels 0-1 (2026-10-28) | 65.4 | 148.5 | 0.39 | 0.346 | 40% |
+| seed 3, levels 0-3 | 164.2 | 373.5 | 0.99 | 0.500 | 58% |
+| seed 3, levels 0-7 | 429.4 | 930.9 | 2.46 | 0.647 | 75% |
 
 FLORES per language, levels 0-3 code: 182 (zh) to 210 (hi), spread 15%;
 text: 300 (en) to 426 (ru), spread 42%.
@@ -757,7 +797,12 @@ What this says:
   42: seed 2's code generalises worse out of domain under the prior, i.e. it
   is more sentence-specific. More meaning in the code and more bits; the
   substrate criterion fails harder for the better model. Code cost per
-  language still spreads ~17% (292 zh to 343 hi at depth 4).
+  language still spreads ~17% (292 zh to 343 hi at depth 4). **Seed 3
+  (`results/a4/seed3_500000/prior_codes_d*.json`) costs more again**, 2.5x
+  text on FLORES and 2.6x on opus at the same fidelity as seed 2: across
+  three seeds the full code spans 484-931 FLORES bits, a factor of two, with
+  no relation to round-trip. Bit cost under a prior is a seed property, like
+  the inventory; fidelity and compositionality are recipe properties.
 - Caveats: the priors were still improving slowly at 30k steps (d8 281 ->
   280 over the last 5k), equally for all streams; the text stream is scored
   losslessly while the code is scored at its own fidelity, so "equal
@@ -767,17 +812,18 @@ What this says:
 ### Still open in A
 
 Nothing. The seed-2 cross-seed checks of A2, A3, A4 (decoded core) and A5
-ran on the GB10 on 2026-10-19 (`scripts/seed2_gb10.sh`, outputs in
+ran on the GB10 on 2026-10-19, and the seed-3 ones on 2026-10-28
+(`results/a4/seed3_500000/`); the seed-2 ones (`scripts/seed2_gb10.sh`, outputs in
 `results/a4/seed2_500000/`; a first run on the 50k seed-pair checkpoint by
 mistake is kept in `results/a4/seed2_50k/` as an early-training data point:
 round-trip 0.443, levels 0-1 prior 40.6 bits on FLORES). The convergence
 decision is taken in §8.
 
-## 8. Status after workstream A (2026-10-19) and the plan
+## 8. Status after workstream A (2026-10-28) and the plan
 
 ### What is in
 
-Every A item has a result, and A2, A3, A5 have a second seed. A1 inventory
+Every A item has a result, and A2, A3, A4, A5 have three seeds. A1 inventory
 of the 500k model (probe undercounts; nPMI finds the content radicals), A2
 length curve and depth curve for both seeds, A3 compositionality suite on E3 /
 C1 / 500k / 500k seed 2, A4 converged cross-seed test with the shared radicals
@@ -786,7 +832,8 @@ stack-level interlingua. Two 500k wafer models exist
 (`model_dir/long-b128-20261010T042150Z`, seed 42, round-trip 0.583;
 `model_dir/long-b128-seed2-20261014T160630Z`, seed 2, **0.651, the best
 model**; `.eval.pt` at 50k/100k/250k/480k/500k and 250k/480k/500k
-respectively). A third seed (3) was started on 2026-10-19 (branch 1 below).
+respectively), and a third, `model_dir/long-b128-seed3-20261019T210243Z`
+(seed 3, 0.647, `.eval.pt` at 480k/500k). Branch 1 below is done.
 
 ### What the results say, together
 
@@ -802,13 +849,15 @@ respectively). A third seed (3) was started on 2026-10-19 (branch 1 below).
    reconstruction objective is doing what Kharitonov predicted: minimising
    code information, not organising it.
 3. **The inventory is a property of the run, except for a small core the
-   data forces.** 19% of level-0 radicals recur across converged seeds. Six
-   of those are structural codes matched by frequency; five content radicals
-   recur and decode to the same concept in both models: negation, today/date,
-   child, health, European Union (A4). The core is ~7% of the inventory and
-   consists of frequent, categorical, basic-vocabulary concepts. A fixed
-   human-readable inventory cannot be read off a single model as the plan
-   assumed, but a small one can be read off the intersection of models.
+   data forces.** 14-27% of level-0 radicals recur between any two converged
+   seeds, and the recurrence is a fixed set: what recurs with one seed
+   recurs with the other (10 of 11, against ~3 by chance). The three-seed
+   core is four structural codes plus three or four content radicals,
+   European Union, health, an international-body radical and (weakly) child,
+   4-5% of the inventory (A4). Negation and date, shared by two seeds, are
+   factored differently by the third. A fixed human-readable inventory cannot
+   be read off a single model as the plan assumed, and the intersection of
+   models yields a handful of symbols, two of them news-domain entities.
    Levels 1-7 cannot be compared across seeds at all (residual codes are
    defined relative to level 0), so "seed-specific" there means "unmeasurable",
    not "meaningless".
@@ -818,12 +867,14 @@ respectively). A third seed (3) was started on 2026-10-19 (branch 1 below).
 5. **The interlingua is the strongest and earliest result**: it is present at
    50k steps as a whole-sentence clustering before any radicals exist (A4),
    and it shows up as a bit count (A5, 15% spread across languages).
-6. **Seed variance is large and was never measured.** Two seeds of one
-   recipe differ by 0.07 round-trip (0.583 vs 0.651) and by 1.5x in code cost
-   under the prior, while every compositionality metric agrees. Single-run
-   lever comparisons smaller than ~0.07 (several in PHASE8) are not
-   established; the whole-meaning properties are robust and the inventory and
-   bit cost are not.
+6. **Seed variance is large and is now measured.** Three seeds of one
+   recipe: round-trip 0.583 / 0.651 / 0.647 (sd 0.038, seed 42 the low
+   outlier), code cost under the prior 484 / 792 / 931 FLORES bits (2x, no
+   relation to fidelity), while every compositionality metric and the
+   depth-2 round-trip (0.346-0.348) agree to the third digit. Single-run
+   lever comparisons smaller than ~0.08 (several in PHASE8) are not
+   established; fidelity, compositionality and the shallow code are recipe
+   properties, the inventory and the bit cost are seed properties.
 7. **Why: Kruskal identifies the meaning, not its factorisation** (A4, last
    bullets). Parallel data pins down what is encoded, not the coordinates;
    only concepts that act as factors in the data (frequent, sharp,
@@ -851,15 +902,16 @@ run.
 
 ### The plan: two branches (agreed 2026-10-19)
 
-**Branch 1, confirm.** A third 500k seed (`SEED=3 cerebras/runs/long_b128.sh`,
-started 2026-10-19, wafer otherwise idle, ~2 days) answers what two seeds
-cannot: whether the stable core is a fixed set (the same five concepts recur
-in all three pairwise matchings and the three-way intersection) or a pairwise
-coincidence (the intersection shrinks), and what the seed error bar on
-round-trip is (three runs give a variance). Then `scripts/seed2_gb10.sh
-<seed3 ckpt>` on the GB10 (round-trip, A3, A5, level-0 decode) and
-`codebook_stability.py` for the two new pairs. This branch cannot change the
-conclusion, only its confidence; it never blocks branch 2.
+**Branch 1, confirm. Done 2026-10-28.** A third 500k seed
+(`SEED=3 cerebras/runs/long_b128.sh`, 2026-10-19 to 10-21) was matched
+against both others on this node and scored, decoded and priced on the GB10
+(`scripts/seed2_gb10.sh`). Verdict: the core is a fixed set (10 of 11 recur
+in both other seeds, 8 triangles close) but smaller than the two-seed decode
+suggested: European Union, health, an international-body radical and weakly
+child; negation and date are partition-dependent. Round-trip sd 0.038 over
+three seeds, depth-2 round-trip identical in all three, code cost 2x across
+seeds. The conclusion stands with higher confidence and a smaller core:
+the data forces 3-4 content radicals and nothing else.
 
 **Branch 2, supply the inductive bias.** Minimal pairs, mixed into the opus100
 corpus (tens of thousands, not a replacement): the same sentence with one
@@ -931,7 +983,8 @@ the two branches above.
 All compositionality and stability numbers are on the FLORES held-out split
 (long sentences, coarse attributes); the A1 probe undercounts the 500k
 model; the A5 text baseline is lossless while the code is lossy; the
-cross-seed core rests on two seeds until branch 1 reports; the decoded
-concepts of the core are read from the A1 probe's aggregate tokens, which
-undercounts, so "unreadable" pairs may still be meaningful.
+cross-seed core rests on three seeds and one recipe; the decoded concepts
+of the core are read from the A1 probe's aggregate tokens, which undercounts
+(seed 3's probe output is the noisiest of the three), so weak readings such
+as seed 3's CHILD may be probe noise rather than a different concept.
 
