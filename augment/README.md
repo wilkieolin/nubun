@@ -366,3 +366,32 @@ any"). zh tense fails for every model (15-21%): drop zh from tense pairs.
 Back-translation files are now named `bt.<factor>.<bt model>~<translate model>`
 (`verify backtrans` and `package` take `--translate-model`), so two translators'
 back-translations no longer share inputs or results.
+
+### End to end with muse-spark (2026-10-28, `--work augment/work/muse_e2e`)
+
+muse-spark-bf16 for edit and translation, Llama 3.1 70B for back-translation
+of every pair (negation too). Changes since the comparison runs: tense drops
+zh (`FACTOR_LANGS`), tense candidates drop DATE/TIME entities, years and
+anchoring adverbs; edit prompts skip NPIs that cannot change cleanly and
+discourse frames, and spell out consistent sequence of tense; back-translation
+skips the main-clause check (literal BT keeps source word order: "bring them
+not there", "no elegant solution"; de went 67% -> 92%) and allows +2 edit
+distance (fr imparfait comes back as "was giving").
+
+| stage | negation | tense |
+|---|---|---|
+| English edits accepted | 220/300 (73%; 45 skips, mostly justified: discourse frames, *never*, *anymore*) | 234/300 (78%) |
+| translation accepted, per language | 97-100% | 97-100% |
+| back-translation accepted, per language | 88-95% | ar 78, ja 83, fr 84, ru 87, hi 87, pt 89, de 91, es 91 |
+| pairs in all languages (packaged) | 210/220 | 99/234 (166 in >= 7 of 8) |
+
+Remaining tense losses: perfect <-> pluperfect pairs do not survive
+translation (fr passé composé back-translates as simple past; ar "كنت قد كنت"),
+so perfect-aspect sentences are now excluded from tense candidates (applies to
+the next run); real ar translation errors; BT pronoun confusions. Negation
+`remove` candidates now need a main-clause not/n't (about half of the remove
+skips were *never*, which the prompt forbids deleting).
+
+`review` writes a markdown sheet for the §5.6 human read
+(`augment/work/muse_e2e/review.md`: 30 accepted + 30 rejected per language,
+zh/ja/ar/hi, with English pair, target pair, back-translation and verdict).

@@ -71,6 +71,9 @@ BATCH_URL = API + "/v1/batches"
 
 MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 TARGET_LANGS = ["zh", "es", "fr", "ar", "ru", "hi", "ja", "pt", "de"]
+# zh has no tense inflection: sentence-final 了 on statives marks change of state ("anymore"),
+# and back-translation rejects 80%+ of zh tense pairs for every model (README §9)
+FACTOR_LANGS = {"negation": TARGET_LANGS, "tense": [l for l in TARGET_LANGS if l != "zh"]}
 SHARD_LANGS = ["ar", "de", "es", "fr", "hi", "ja", "pt", "ru", "zh"]  # data/opus100/{x}_en.npz
 LANG_NAMES = {"zh": "Chinese (Simplified)", "es": "Spanish", "fr": "French", "ar": "Arabic",
               "ru": "Russian", "hi": "Hindi", "ja": "Japanese", "pt": "Portuguese",
@@ -84,7 +87,9 @@ EDIT_CHUNK = 20
 REASONING_MODELS = ("gpt-oss", "muse-spark", "nemotron", "beam-", "inkling")   # think before answering
 TERMINAL = {"completed", "failed", "cancelled", "expired"}
 
-TIME_ADVERBS = {"yesterday", "tomorrow", "ago", "last", "next", "now", "currently", "soon"}
+TIME_ADVERBS = {"yesterday", "tomorrow", "ago", "last", "next", "now", "currently", "soon",
+                "once", "today", "tonight", "recently", "lately", "formerly", "previously"}
+YEAR_RE = re.compile(r"\b(1[5-9]\d\d|20\d\d)s?\b")
 QUOTE_RE = re.compile(r"[\"“”„«»「」『』‘]|(^|\s)'|'(\s|$)")
 URL_RE = re.compile(r"https?://|www\.|\.(com|org|net|html?)\b", re.I)
 # subtitle register that the edit models mishandle: OCR "l" for "I", got to/gotta, ain't, ...
@@ -326,7 +331,9 @@ For each input sentence, toggle the polarity of the MAIN clause's finite verb:
 - Match the source's contraction register: if the source uses contractions (don't, isn't), the variant does too; if it spells out (do not, is not), so does the variant.
 - Change other words ONLY where grammar forces it: some/any, already/yet, too/either. Keep every other word, word order and punctuation identical.
 - Never add or remove adverbs such as never, anymore, at all, still.
-- Use op "skip" (variant null) for: fragments, headlines, quotations, sentences whose only negation is in a subordinate clause, and idioms whose meaning the toggle would change (can't help, not only, no doubt, nothing but).
+- When removing a negation, words it licenses must change too: any/anyone/anything -> some/someone/something. If one cannot change cleanly (anymore, ever, even, yet, at all, either), use op "skip".
+- The main clause is the one carrying the content. If the main verb is only a discourse frame (I mean, you know, I guess, I think, I hope, I'm sure, it seems), use op "skip".
+- Use op "skip" (variant null) for: fragments, headlines, quotations, sentences whose only negation is in a subordinate clause, and idioms whose meaning the toggle would change (can't help, not only, no doubt, nothing but, don't have to tell me twice).
 
 Input: a JSON array of {"id", "text"}.
 Output only the JSON object {"items": [{"id": <id>, "op": "add" | "remove" | "skip", "variant": <edited sentence or null>}, ...]}, one item per input id, in input order. No commentary.
@@ -340,10 +347,10 @@ Examples:
 
 For each input sentence, switch the MAIN clause between present and past:
 - present -> past: op "to_past"; past -> present: op "to_present".
-- Carry sequence-of-tense agreement into clauses that depend on the main verb ("He says he knows." <-> "He said he knew.").
+- Carry sequence-of-tense agreement into every clause that depends on the main verb, consistently ("He says he knows." <-> "He said he knew."; "I promised I wouldn't" <-> "I promise I won't").
 - Keep aspect: progressive stays progressive (is going <-> was going), perfect stays perfect (has gone <-> had gone).
 - Change nothing else: same words, word order, punctuation, person and number.
-- Use op "skip" (variant null) for: timeless generalities (scientific facts, definitions, proverbs), sentences with a time adverbial that conflicts with the new tense, futures, modals (can, must, should, may, might, would, could), headlines, quotations and fragments.
+- Use op "skip" (variant null) for: timeless generalities (scientific facts, definitions, proverbs, statistics), events anchored to a specific past time (dates, years, "once", "back then") or a time adverbial that conflicts with the new tense, completed one-off events whose present form would read as a stage direction or headline, futures, modals (can, must, should, may, might, would, could), headlines, quotations and fragments.
 
 Input: a JSON array of {"id", "text"}.
 Output only the JSON object {"items": [{"id": <id>, "op": "to_past" | "to_present" | "skip", "variant": <edited sentence or null>}, ...]}, one item per input id, in input order. No commentary.
@@ -362,8 +369,7 @@ FACTOR_GLOSS = {
     ("tense", "to_present"): "A is in the past tense; B is the same sentence in the present tense.",
 }
 
-TR_SYSTEM = """You translate English minimal pairs into nine languages: """ + ", ".join(
-    f"{LANG_NAMES[l]} ({l})" for l in TARGET_LANGS) + """.
+TR_SYSTEM = """You translate English minimal pairs into {n} languages: {lang_list}.
 
 A and B are the same English sentence and differ ONLY in one factor ({factor_desc}).
 For each language:
@@ -373,15 +379,25 @@ For each language:
 4. Realise the factor with the language's smallest conventional device: {device}. Never use a time adverb or a different word choice to express it.
 5. If a minimal pair is impossible in a language, return null for that language.
 
-Output only the JSON object {{"zh": {{"a": ..., "b": ...}}, "es": {{...}}, "fr": ..., "ar": ..., "ru": ..., "hi": ..., "ja": ..., "pt": ..., "de": ...}} (each value an object or null). No commentary."""
+Output only the JSON object {shape} (each value an object or null). No commentary."""
 
 TR_FACTOR = {
     "negation": ("polarity: one member is negated, the other affirmative",
                  "a negation particle or a negative verb form"),
     "tense": ("tense: one member is present, the other past",
-              "the past-tense verb form; in Chinese the aspect marker 了 or 过, in Japanese the "
-              "た-form (or ました/でした)"),
+              "the past-tense verb form of the main clause (in Japanese the た-form, or "
+              "ました/でした), with dependent clauses following the language's own "
+              "sequence-of-tense rules"),
 }
+
+
+def tr_system(factor):
+    langs = FACTOR_LANGS[factor]
+    desc, device = TR_FACTOR[factor]
+    shape = "{" + ", ".join(f'"{l}": {{"a": ..., "b": ...}}' for l in langs) + "}"
+    return TR_SYSTEM.format(n=len(langs), lang_list=", ".join(f"{LANG_NAMES[l]} ({l})" for l in langs),
+                            factor_desc=desc, device=device, shape=shape)
+
 
 BT_SYSTEM = """You translate a pair of sentences into English as literally as possible.
 The two sentences A and B are a minimal pair: translate each one literally, keeping the two English translations word-for-word identical wherever the sources are identical. Do not smooth over or normalise any grammatical difference between them (tense, negation, number, person).
@@ -486,13 +502,20 @@ def classify(doc):
         return None, {}
     ok = {}
     if a["neg"] == "1":
-        if any(c.dep_ == "neg" for c in root.children):   # negation on the main clause
+        # main-clause "not"/"n't" only: "never" cannot be removed without deleting an adverb
+        # (the edit prompt forbids it), and the model skips those (~half of remove skips)
+        if any(c.dep_ == "neg" and c.lower_ in ("not", "n't", "nt") for c in root.children):
             ok["negation"] = "remove"
     else:
         ok["negation"] = "add"
     modal = any(x.tag_ == "MD" for x in aux) or root.tag_ == "MD"
-    if (a["tense"] in ("pres", "past") and not modal
-            and not any(t.lower_ in TIME_ADVERBS for t in doc)):
+    # perfect <-> pluperfect is a tense flip in English but not across languages (fr passé
+    # composé back-translates as simple past; ar pluperfect came out as "كنت قد كنت")
+    perfect = any(x.lemma_ == "have" for x in aux) and root.tag_ == "VBN"
+    if (a["tense"] in ("pres", "past") and not modal and not perfect
+            and not any(t.lower_ in TIME_ADVERBS for t in doc)
+            and not any(e.label_ in ("DATE", "TIME") for e in doc.ents)   # "in June 1816"
+            and not YEAR_RE.search(doc.text)):
         ok["tense"] = "to_past" if a["tense"] == "pres" else "to_present"
     return a, ok
 
@@ -585,8 +608,7 @@ def cmd_prepare(args, work):
         if not args.edit_model:
             raise SystemExit("prepare translate needs --edit-model")
         meta["edit_model"] = args.edit_model
-        desc, device = TR_FACTOR[args.factor]
-        system = TR_SYSTEM.format(factor_desc=desc, device=device)
+        system = tr_system(args.factor)
         for r in accepted_edits(work, args.factor, args.edit_model):
             user = json.dumps({"relation": FACTOR_GLOSS[(args.factor, r["direction"])],
                                "A": r["a"], "B": r["b"]}, ensure_ascii=False)
@@ -924,7 +946,7 @@ def stranded_npi(neg, aff):
     return hit
 
 
-def verify_english(factor, direction, pairs, min_cos):
+def verify_english(factor, direction, pairs, min_cos, main_clause=True):
     """pairs: [(a, b)] -> [dict(accepted, reason, ...)] (README §3.3)."""
     docs = list(nlp().pipe([t for ab in pairs for t in ab], batch_size=128))
     cos = cosines(pairs)
@@ -935,13 +957,16 @@ def verify_english(factor, direction, pairs, min_cos):
         aa, ab = doc_attributes(da), doc_attributes(db)
         ed = token_edit_distance(a, b)
         budget = 3 if factor == "negation" else n_finite(da) + 1
+        if not main_clause:      # back-translation: imparfait etc. come back as "was giving"
+            budget += 2
         changed = [x for x in KEEP[factor] if aa[x] != ab[x]]
         neg_doc = db if direction == "add" else da
         if a.strip() == b.strip():
             reason = "identical"
         elif (aa[attr], ab[attr]) != (va, vb):
             reason = f"{attr}_no_flip({aa[attr]}->{ab[attr]})"
-        elif factor == "negation" and not any(c.dep_ == "neg" for c in root_of(neg_doc).children):
+        elif (factor == "negation" and main_clause
+              and not any(c.dep_ == "neg" for c in root_of(neg_doc).children)):
             reason = "neg_not_main_clause"     # doc-level neg flipped, but not on the ROOT
         elif factor == "negation" and direction == "remove" and stranded_npi(a, b):
             reason = "npi_stranded"             # e.g. "didn't even" -> "did even"
@@ -959,13 +984,13 @@ def verify_english(factor, direction, pairs, min_cos):
     return out
 
 
-def run_english_verifier(factor, records, min_cos):
+def run_english_verifier(factor, records, min_cos, main_clause=True):
     """records with 'direction', 'a', 'b' -> same records + verdict fields, grouped by direction."""
     for d in DIRECTIONS[factor]:
         idx = [k for k, r in enumerate(records) if r["direction"] == d]
         if idx:
             vs = verify_english(factor, d, [(records[k]["a"], records[k]["b"]) for k in idx],
-                                min_cos)
+                                min_cos, main_clause)
             for k, v in zip(idx, vs):
                 records[k].update(v)
 
@@ -1080,7 +1105,7 @@ def verify_tr(args, work, res, meta):
         r = {"pair_id": pid, "factor": args.factor, "direction": e["direction"],
              "en": {"a": e["a"], "b": e["b"]}, "returned": content is not None,
              "parsed": isinstance(obj, dict), "langs": {}}
-        for lang in TARGET_LANGS:
+        for lang in FACTOR_LANGS[args.factor]:
             v = obj.get(lang) if isinstance(obj, dict) else None
             a = v.get("a") if isinstance(v, dict) else None
             b = v.get("b") if isinstance(v, dict) else None
@@ -1108,7 +1133,7 @@ def verify_tr(args, work, res, meta):
             for r in recs for l, v in r["langs"].items()]
     summarize(f"translate {args.factor} {args.model}", flat, by="lang")
     if args.factor == "tense":
-        for lang in TENSE_MARKERS:
+        for lang in (l for l in TENSE_MARKERS if l in FACTOR_LANGS["tense"]):
             vs = [r["langs"][lang] for r in recs if r["langs"][lang]["accepted"]]
             if vs:
                 print(f"  {lang} aspect marker in past member only: "
@@ -1140,7 +1165,9 @@ def verify_bt(args, work, res, meta):
             r["a"], r["b"] = obj["A"].strip(), obj["B"].strip()
             to_check.append(r)
         recs.append(r)
-    run_english_verifier(args.factor, to_check, args.min_cos)
+    # literal back-translations keep source word order ("bring them not there", "no elegant
+    # solution"), so spaCy attaches the negation off the ROOT; the flip is what is checked here
+    run_english_verifier(args.factor, to_check, args.min_cos, main_clause=False)
     summarize(f"backtrans {args.factor} {args.model}", recs, by="lang")
     if args.factor == "negation":   # calibration of the regex check (it already passed)
         n = len(recs)
@@ -1209,6 +1236,55 @@ def cmd_report(args, work):
     print(f"wrote {work.p('report.json')}")
 
 
+# ---------------------------------------------------------------- review sheet (5.6)
+def cmd_review(args, work):
+    """Sample accepted / rejected translations per language into a markdown sheet for a
+    human read: English pair, target pair, verdict, back-translation when there is one."""
+    import random
+    rng = random.Random(args.seed)
+    out = [f"# Minimal-pair review: translate {args.translate_model}, "
+           f"back-translate {args.backtrans_model}\n",
+           "Mark each item OK / BAD (BAD: not a minimal pair, factor not flipped, or "
+           "ungrammatical). Compare with the automatic verdict.\n"]
+    for factor in args.factors.split(","):
+        trs = accepted_translations(work, factor, args.translate_model)
+        bt = {}
+        if args.backtrans_model:
+            path = work.p("verified", stage_name("bt", factor, args.backtrans_model,
+                                                 args.translate_model) + ".jsonl")
+            bt = {(r["pair_id"], r["lang"]): r for r in read_jsonl(path)}
+        for lang in args.langs.split(","):
+            if lang not in FACTOR_LANGS[factor]:
+                continue
+            items = []
+            for r in trs:
+                v = r["langs"].get(lang)
+                if not v or v.get("a") is None:
+                    continue
+                b = bt.get((r["pair_id"], lang))
+                ok = v["accepted"] and (b is None or b["accepted"])
+                why = v["reason"] or (b["reason"] if b and not b["accepted"] else None)
+                items.append((ok, why, r, v, b))
+            acc = [x for x in items if x[0]]
+            rej = [x for x in items if not x[0]]
+            out.append(f"\n## {factor} / {lang}: {len(acc)} accepted, {len(rej)} rejected "
+                       f"(of {len(trs)} English pairs)\n")
+            for label, group in (("accepted", acc), ("rejected", rej)):
+                pick = rng.sample(group, min(args.n, len(group)))
+                out.append(f"\n### {label} ({len(pick)} of {len(group)})\n")
+                for k, (ok, why, r, v, b) in enumerate(pick, 1):
+                    out.append(f"{k}. `{r['pair_id']}` [{r['direction']}]"
+                               + (f" auto: **{why}**" if why else "") + "  \n"
+                               f"   EN: {r['en']['a']} ‖ {r['en']['b']}  \n"
+                               f"   {lang.upper()}: {v['a']} ‖ {v['b']}  \n"
+                               + (f"   BT: {b['a']} ‖ {b['b']}  \n" if b and b.get("a") else "")
+                               + "   verdict: ____\n")
+    path = args.out or work.p("review.md")
+    with open(path, "w") as f:
+        f.write("\n".join(out) + "\n")
+    print(f"wrote {path}")
+
+
 # ---------------------------------------------------------------- package (3.7)
 def cmd_package(args, work):
     import numpy as np
@@ -1232,10 +1308,11 @@ def cmd_package(args, work):
             for lang, v in t["langs"].items():
                 if v["accepted"] and (bt_ok is None or (pid, lang) in bt_ok):
                     langs[lang] = (v["a"], v["b"])
-            if len(langs) - 1 >= args.min_langs:
+            need = len(FACTOR_LANGS[factor]) if args.min_langs is None else args.min_langs
+            if len(langs) - 1 >= need:
                 pairs.append((pid, factor, t["direction"], langs, t["langs"]))
                 kept += 1
-        print(f"{factor}: {kept}/{len(trs)} pairs with >= {args.min_langs} accepted target languages")
+        print(f"{factor}: {kept}/{len(trs)} pairs with >= {need} accepted target languages")
     os.makedirs(args.out, exist_ok=True)
 
     def enc(t):
@@ -1345,6 +1422,15 @@ def main():
 
     sub.add_parser("report")
 
+    s = sub.add_parser("review", help="markdown sheet of accepted/rejected pairs per language")
+    s.add_argument("--translate-model", required=True)
+    s.add_argument("--backtrans-model")
+    s.add_argument("--factors", default="negation,tense")
+    s.add_argument("--langs", default="zh,ja,ar,hi")
+    s.add_argument("--n", type=int, default=30, help="items per (language, accepted|rejected)")
+    s.add_argument("--seed", type=int, default=0)
+    s.add_argument("--out")
+
     s = sub.add_parser("package")
     s.add_argument("--factors", default="negation,tense")
     s.add_argument("--edit-model", required=True)
@@ -1352,7 +1438,8 @@ def main():
     s.add_argument("--backtrans-model")
     s.add_argument("--require-bt-negation", action="store_true",
                    help="also require back-translation for negation (only sampled pairs survive)")
-    s.add_argument("--min-langs", type=int, default=9, help="accepted target languages per pair")
+    s.add_argument("--min-langs", type=int, help="accepted target languages per pair "
+                   "(default: all of the factor's languages, 9 negation / 8 tense)")
     s.add_argument("--max-len", type=int, default=128)
     s.add_argument("--out", default=os.path.join(REPO, "data", "minpairs"))
 
@@ -1360,7 +1447,7 @@ def main():
     work = Work(args.work, args.remote_root)
     {"candidates": cmd_candidates, "smoke": cmd_smoke, "prepare": cmd_prepare,
      "run": cmd_run, "submit": cmd_submit, "status": cmd_status, "collect": cmd_collect,
-     "inspect": cmd_inspect, "verify": cmd_verify, "report": cmd_report,
+     "inspect": cmd_inspect, "verify": cmd_verify, "report": cmd_report, "review": cmd_review,
      "package": cmd_package}[args.cmd](args, work)
 
 
