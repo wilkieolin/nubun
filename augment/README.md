@@ -403,3 +403,63 @@ from one language does not affect pairing elsewhere.
 English edits and for de/fr/ja translations, with English pair, target pair,
 back-translation and verdict; 438 items). zh/ar/hi have no human reader and rely
 on the automatic checks. Scaling to the medium run waits on this read.
+
+## 10. Judge quorum and planted defects (`judge.py`)
+
+Hand-reading hundreds of items per language is not feasible, so quality is
+measured in two cheaper ways and a human checks only the measurement.
+
+1. **Planted defects.** `judge.py build` corrupts auto-accepted pairs with
+   the generator (muse) in six ways: `no_flip`, `extra_change` (one content
+   word), `subject_change`, `ungrammatical`, `mistranslation` (both members
+   changed the same way), and `mismatch` (another pair's translation). It
+   then back-translates the planted translations with the usual model, so the
+   automatic checks are scored the same way they run on real items.
+   6 per defect per (factor, language) gives 660 planted items.
+2. **Judge quorum.** Three judges from families other than the generator
+   (gpt-oss-120b and gemma-4-31B-it on Sophia, inkling on Minerva) judge
+   every real and planted item blind. Items are shuffled, 10 per request.
+   The rubric is flipped / minimal / grammatical, plus faithful for
+   translations. The quorum fails an item when at least 2 of the 3 judges
+   fail it. Each judge takes 4-8 minutes for 5k items.
+3. **Human check of the quorum.** `judge.py sample` draws 50 real items for
+   the languages we can read: 30 English edits and 15 Japanese tense pairs,
+   about two thirds of them where the judges or the automatic checks
+   disagree, plus 10 items every checker passed. They are marked on a
+   review page that shows machine verdicts only after the human marks.
+
+Muse pilot (`augment/work/muse_e2e/judge/`), catch rate on planted defects:
+
+| defect | automatic checks | gpt-oss | gemma-4 | inkling | quorum |
+|---|---|---|---|---|---|
+| no_flip | 100% | 99% | 100% | 100% | 100% |
+| extra_change | 13% | 97% | 100% | 100% | 100% |
+| subject_change | 82% | 99% | 100% | 100% | 100% |
+| ungrammatical | 11% | 97% | 97% | 99% | 98% |
+| mistranslation | 2% | 56% | 78% | 76% | 76% |
+| mismatch | 45% | 98% | 100% | 100% | 100% |
+| all | 43% | 91% | 96% | 96% | 96% |
+
+The quorum's catch rate is 93-100% in every language, including zh, ar
+and hi, which have no human reader.
+
+Reading the table:
+
+- The automatic checks see only the flipped attribute and a few kept
+  attributes. They cannot see a changed content word, a grammar error, or a
+  translation that drifted from the English. The back-translation compares
+  the pair to itself, not to the English source.
+- Mistranslation is the quorum's weak spot (76%). The planted
+  mistranslations are subtle (getroffen -> gesehen in both members).
+- On real items, the quorum passes 89-98% per slot. Auto and quorum disagree
+  on 4-24% of items, mostly items auto failed and the quorum passed. The most
+  disagreement is tense ar, fr, ja and hi.
+- When the quorum fails a real translation, the most common criteria are
+  grammatical (110), faithful (76), minimal (58) and flipped (49).
+- Judge agreement: kappa 0.70-0.83.
+- Caveat: planted defects may be easier to spot than the generator's own
+  mistakes. The human check on disagreements tests exactly that.
+
+Next, after the human check: combine the two filters (keep a pair when both
+auto and quorum pass, or let the quorum override auto rejections if the
+human check supports it), then run the medium run.
