@@ -306,13 +306,13 @@ class MinPairsDataset(IterableDataset):
 
 
 def make_pair_collate(pad_token_id: int):
-    """make_streaming_collate plus pair_mask (B/2,) of ones: every row pair is a minimal pair."""
+    """make_streaming_collate plus pair_mask (B,) of ones: every row pair is a minimal pair."""
     base = make_streaming_collate(pad_token_id)
 
     def collate(batch: list[dict]) -> dict:
         assert len(batch) % 2 == 0, "minimal-pair batches need an even batch size"
         out = base(batch)
-        out["pair_mask"] = torch.ones(len(batch) // 2)
+        out["pair_mask"] = torch.ones(len(batch))
         return out
     return collate
 

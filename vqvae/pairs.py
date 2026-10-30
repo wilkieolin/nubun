@@ -33,7 +33,8 @@ def _agreement(assign):
 
 def pair_hamming_loss(hard, soft, pair_mask, budget):
     """hard, soft: (L, B, M, k) from ResidualVectorQuantizer with pair_tau set;
-    pair_mask: (B/2,) float, 1 where rows 2i, 2i+1 are a minimal pair.
+    pair_mask: (B,) float per row, 1 on both rows 2i, 2i+1 of a minimal pair
+    (batch-major, as CS runs require; reduced to per pair by reshape + mean).
     Returns (penalty scalar, mean slot Hamming over the masked pairs)."""
     L, B, M, _ = hard.shape
     same_level = _agreement(hard.float())                  # (L, P, M), 1 = same code
@@ -41,7 +42,7 @@ def pair_hamming_loss(hard, soft, pair_mask, budget):
     ham = (level_diffs > 0.5).float().sum(dim=-1)          # (P,) slots with any level differing
     surrogate = (1.0 - _agreement(soft.float())).mean(dim=0).sum(dim=-1)   # (P,)
     ham_st = ham + surrogate - surrogate.detach()
-    mask = pair_mask.float()
+    mask = pair_mask.float().reshape(B // 2, 2).mean(dim=-1)   # (P,), no slicing
     n = mask.sum().clamp(min=1.0)
     penalty = (F.relu(ham_st - budget) * mask).sum() / n
     return penalty, (ham * mask).sum() / n

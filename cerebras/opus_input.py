@@ -21,8 +21,8 @@ Minimal pairs (PHASE9 §8 branch 2): with minpairs_dir and pairs_per_batch=P,
 the first 2P rows of every batch are P minimal pairs from augment/minpairs.py
 package shards (same layout plus pair_id/factor/member, members in consecutive
 rows), each pair at rows (2i, 2i+1) with the same language and direction; the
-other B-2P rows are opus as before. with_pair_mask adds `pair_mask` (B/2,)
-float, 1 for the first P row pairs, for the Hamming penalty (vqvae/pairs.py).
+other B-2P rows are opus as before. with_pair_mask adds `pair_mask` (B,)
+float, 1 on the first 2P rows (per row: CS runs need batch-major tensors), for the Hamming penalty (vqvae/pairs.py).
 Pairs whose members do not both fit seq_len are never drawn, so truncation
 cannot cut the changed word.
 
@@ -316,8 +316,8 @@ def make_opus_input_fn(opus_dir, seq_len, batch_size, num_steps,
                 if with_semantic:
                     batch["sem_target"] = torch.from_numpy(sem)
                 if with_pair_mask:
-                    pm = np.zeros(B // 2, dtype=np.float32)
-                    pm[:P] = 1.0
+                    pm = np.zeros(B, dtype=np.float32)
+                    pm[:2 * P] = 1.0
                     batch["pair_mask"] = torch.from_numpy(pm)
                 yield batch
 

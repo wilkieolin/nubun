@@ -143,8 +143,8 @@ def make_synthetic_input_fn(args, vocab):
                 if not args.no_semantic:
                     b["sem_target"] = torch.randn(B, d_sem)
                 if args.lambda_pair > 0:     # penalty graph: dry-compilable too
-                    pm = torch.zeros(B // 2, dtype=torch.float32)
-                    pm[:max(1, args.pairs_per_batch)] = 1.0
+                    pm = torch.zeros(B, dtype=torch.float32)
+                    pm[:2 * max(1, args.pairs_per_batch)] = 1.0
                     b["pair_mask"] = pm
                 yield b
         return gen()
