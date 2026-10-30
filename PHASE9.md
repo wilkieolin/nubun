@@ -993,7 +993,21 @@ medium run under way.** Spec and results in `augment/README.md` §9-10.
     training, so it only shows the penalty works.
   - **Next:** `cerebras/runs/minpairs_pair.sh`, a `compile` check of the
     penalty graph, then a mix-only and a penalty run (seed 1, 50k, 8 pairs
-    per batch of 128), each compared with `seed_pair.sh` seed 1.
+    per batch of 128), each compared with `seed_pair.sh` seed 1. The
+    on-cluster loop is in `cerebras/HANDOFF_MINPAIRS.md`.
+  - **The 50k baseline is a weak test.** For seed 2 at 50k, no pairs in
+    training, medium pairs, level 0:
+    - negation pair median 1 slot: 44% of pairs identical, 69% within the
+      budget of 2;
+    - tense: median 1, 43% identical, 68% within 2;
+    - random pairs: 64.
+
+    Level 0 is still coarse at 50k (2.3 distinct codes per sentence), so the
+    penalty acts on only about a third of pairs there. A 50k run tests
+    whether the penalty compiles, keeps recon, collapses the high-Hamming
+    tail and leaves level-0 diversification alone. Whether it shapes the
+    converged code (500k: negation median 44) needs a longer run or a
+    fine-tune from the long run.
 - **Open: the substitution test (C2), the readout, is not written yet.**
 
 **Readout for both: the substitution test (C2).** Swap a stable radical in or

@@ -63,8 +63,12 @@ def main():
     depths = [int(d) for d in a.depths.split(",")]
     rng = np.random.default_rng(a.seed)
     res = {}
-    for path in sorted(glob.glob(os.path.join(a.minpairs_dir, "*_en.npz"))):
-        d = np.load(path)
+    # packed <lang>_en.npz or unpacked <lang>_en/ (cerebras/unpack_opus.sh)
+    for path in sorted(glob.glob(os.path.join(a.minpairs_dir, "*_en.npz"))
+                       + [p for p in glob.glob(os.path.join(a.minpairs_dir, "*_en"))
+                          if os.path.isdir(p)]):
+        d = (np.load(path) if path.endswith(".npz") else
+             {k[:-4]: np.load(os.path.join(path, k)) for k in os.listdir(path)})
         tok, off = ((d["src_tokens"], d["src_offsets"]) if a.side == "x"
                     else (d["tgt_tokens"], d["tgt_offsets"]))
         mem, fac = d["member"], d["factor"]
@@ -78,11 +82,11 @@ def main():
                     res.setdefault((depth, f, kind), []).extend(h[fac[first] == k].tolist())
     M = model.encoder.m_max
     print(f"{a.checkpoint}  side={a.side}  slots differing (of {M})")
-    print(f"{'levels':<8s}{'factor':<10s}{'kind':<8s}{'n':>6s}{'mean':>7s}{'median':>7s}{'p25':>5s}{'<=2':>7s}{'<=4':>7s}")
+    print(f"{'levels':<8s}{'factor':<10s}{'kind':<8s}{'n':>6s}{'mean':>7s}{'median':>7s}{'p25':>5s}{'=0':>7s}{'<=2':>7s}{'<=4':>7s}")
     for (depth, f, kind), v in sorted(res.items()):
         v = np.array(v)
         print(f"0-{depth - 1:<6d}{f:<10s}{kind:<8s}{len(v):6d}{v.mean():7.1f}{np.median(v):7.0f}"
-              f"{np.percentile(v, 25):5.0f}{np.mean(v <= 2):7.1%}{np.mean(v <= 4):7.1%}")
+              f"{np.percentile(v, 25):5.0f}{np.mean(v == 0):7.1%}{np.mean(v <= 2):7.1%}{np.mean(v <= 4):7.1%}")
 
 
 if __name__ == "__main__":
