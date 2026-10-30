@@ -34,7 +34,10 @@ Models: `model_dir/long-b128-seed2-20261014T160630Z/nubun_cs_step500000.eval.pt`
 `data/phase8_C1_d512_cos130k_step130000.pt` (0.5045).
 
 Where to go next: `PHASE9.md` §8 (consolidated status and the two-branch plan:
-confirm with a third seed; add minimal pairs to supply the inductive bias).
+confirm with a third seed, done 2026-10-28; add minimal pairs to supply the
+inductive bias). Branch 2: the minimal-pair corpus pipeline and its LLM-judge
+filter are built and calibrated against a human check (`augment/README.md`
+§9-10). The trainers are being extended to mix the pairs in.
 
 ## Documents
 

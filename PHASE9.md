@@ -929,6 +929,42 @@ probe needing no new data, a smaller level-0 codebook (k0 = 16 or 32) on two
 seeds, tests whether forcing coarseness alone raises recurrence and can run
 between seed 3 and the first minimal-pair run.
 
+**Branch 2 status (2026-10-29): corpus pipeline built, filter calibrated,
+medium run under way.** Spec and results in `augment/README.md` §9-10.
+- **Scope changed from the plan.** The edits are LLM edits (muse-spark,
+  ALCF), not rules, and there are two factors, not four: negation (9
+  languages) and tense (8; zh has no tense morphology). Subject number and
+  entity swap are deferred. Each English pair is translated jointly, so the
+  pair is itself parallel.
+- **Filter.** A quorum of three judges from other model families
+  (gpt-oss-120b, gemma-4-31B, inkling) gates the English pair and each
+  translation. A pair fails when 2 of 3 fail it. On planted defects the
+  quorum catches 95%; the old automatic checks (spaCy flip/keep, negation
+  regexes, back-translation) catch 43%. A human read of 50 items found the
+  dominant real defect is pragmatic, not grammatical: flips nobody would say
+  ("They try me out, and they like my work").
+  - The judges got a naturalness criterion: they now catch about half the
+    unnatural pairs that no rubric example was taken from (4 of 8), and
+    fail 1 of 34 good ones.
+  - The edit prompts now skip those cases, which removes 12 of the 16 bad
+    items at the source but cuts tense yield from 78% to 55%.
+  - spaCy and back-translation are logged, not gates. They rejected 14 of
+    34 good pairs, and Llama's back-translation erases the tense
+    difference in Japanese.
+- **Packaging.** `data/minpairs_medium/{lang}_en.npz` uses the opus100
+  layout, plus `pair_id`, `factor` and `member`; the two members of a pair
+  are consecutive rows. Each language shard keeps every pair that passed in
+  that language.
+- **Scale.** The medium run (3000 candidates per factor) should give about
+  2k pairs per factor before translation losses. The plan's tens of
+  thousands is 5-10x that and needs no new tooling.
+- **Training.** The wafer trainer has no second-corpus mixer and no pair
+  co-location, and the quantiser returns only level-0 indices, so a
+  full-stack Hamming penalty needs it to expose per-level assignments.
+  Order: (1) mix and co-locate only, at 50k steps against the
+  `seed_pair.sh` baseline; (2) add the penalty, which is a new compile.
+- **Open: the substitution test (C2), the readout, is not written yet.**
+
 **Readout for both: the substitution test (C2).** Swap a stable radical in or
 out of real encodings and decode: code 5 (negation) and 102 (today) in seed
 2, 60 and 79 in seed 42. On branch 1 it tests whether today's stable core is
