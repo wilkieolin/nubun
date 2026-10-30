@@ -87,6 +87,14 @@ def _open_tokens(path):
         return {k: np.asarray(z[k]) for k in _TOKEN_KEYS + ("n_pairs", "lang_code")}
 
 
+def _read_keys(path, keys):
+    """Read whole arrays from an unpacked shard directory or an .npz."""
+    if os.path.isdir(path):
+        return [np.load(os.path.join(path, k + ".npy"), allow_pickle=False) for k in keys]
+    with np.load(path, allow_pickle=False) as z:
+        return [np.asarray(z[k]) for k in keys]
+
+
 def _open_sem(sem_dir, lang):
     """(src_sem, tgt_sem) for one language: unpacked fp16 .npy (mmap) preferred,
     `<lang>_en.sem.npz` fallback (read into RAM)."""
@@ -192,9 +200,7 @@ def make_opus_input_fn(opus_dir, seq_len, batch_size, num_steps,
         mp_meta, _ = _scan_shards(minpairs_dir, short_codes, langs)
         pair_starts = {}                   # path -> first-member rows of fitting pairs
         for lang, _, path in mp_meta:
-            with np.load(path, allow_pickle=False) as z:
-                pid, mem = np.asarray(z["pair_id"]), np.asarray(z["member"])
-                so, to = np.asarray(z["src_offsets"]), np.asarray(z["tgt_offsets"])
+            pid, mem, so, to = _read_keys(path, ("pair_id", "member", "src_offsets", "tgt_offsets"))
             fits = np.maximum(np.diff(so), np.diff(to)) <= seq_len
             r = np.flatnonzero((mem[:-1] == 0) & (mem[1:] == 1) & (pid[:-1] == pid[1:])
                                & fits[:-1] & fits[1:])
