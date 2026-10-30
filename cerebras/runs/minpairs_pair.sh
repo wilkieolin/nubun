@@ -23,7 +23,7 @@ MINPAIRS="${MINPAIRS:-$DATA_DIR/minpairs_npy}"
 STEPS=${STEPS:-50000}
 SEED=${SEED:-1}
 PAIRS=${PAIRS:-8}               # 16 of 128 rows = 12.5% minimal pairs
-LAMBDA=${LAMBDA:-0.1}
+LAMBDA=${LAMBDA:-1.0}             # the GB10 A/B value (PHASE9 §8)
 BUDGET=${BUDGET:-2}
 RUNS=${RUNS:-"mix penalty"}
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
