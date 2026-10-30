@@ -586,6 +586,24 @@ def accepted_edits(work, factor, edit_model):
     return [r for r in read_jsonl(path) if r["accepted"]]
 
 
+def quorum_pass(work, stage, factor, model):
+    """{(pair_id, lang)} the judge quorum passes (judge.py filter, README §10.2)."""
+    path = work.p("verified", f"quorum.{stage}.{factor}.{slug(model)}.jsonl")
+    if not os.path.exists(path):
+        raise SystemExit(f"{path} missing: run judge.py filter {stage} --factor {factor} "
+                         "(or pass --no-judge)")
+    return {(r["pair_id"], r["lang"]) for r in read_jsonl(path) if r["quorum"]}
+
+
+def translatable_edits(work, factor, edit_model, judged):
+    """Accepted English edits, and with judged=True only those the quorum passes."""
+    edits = accepted_edits(work, factor, edit_model)
+    if judged:
+        ok = quorum_pass(work, "edit", factor, edit_model)
+        edits = [r for r in edits if (r["pair_id"], "en") in ok]
+    return edits
+
+
 def accepted_translations(work, factor, tr_model):
     path = work.p("verified", f"tr.{factor}.{slug(tr_model)}.jsonl")
     if not os.path.exists(path):
@@ -613,8 +631,9 @@ def cmd_prepare(args, work):
         if not args.edit_model:
             raise SystemExit("prepare translate needs --edit-model")
         meta["edit_model"] = args.edit_model
+        meta["judged"] = not args.no_judge
         system = tr_system(args.factor)
-        for r in accepted_edits(work, args.factor, args.edit_model):
+        for r in translatable_edits(work, args.factor, args.edit_model, meta["judged"]):
             user = json.dumps({"relation": FACTOR_GLOSS[(args.factor, r["direction"])],
                                "A": r["a"], "B": r["b"]}, ensure_ascii=False)
             items.append((f"tr:{args.factor}:{r['pair_id']}",
@@ -1107,12 +1126,23 @@ def verify_edit(args, work, res):
                 to_check.append(r)
         recs.append(r)
     run_english_verifier(args.factor, to_check, args.min_cos)
+    # spaCy flip/keep checks are a logged signal, not a gate: on the human check they rejected
+    # 14/34 good pairs and caught few bad ones the judge quorum missed (README §10.2)
+    for r in to_check:
+        r["spacy"] = {"accepted": r["accepted"], "reason": r["reason"]}
+        if not args.spacy_gate and r["reason"] != "identical":
+            r["accepted"], r["reason"] = True, None
     summarize(f"edit {args.factor} {args.model}", recs)
+    if not args.spacy_gate:
+        sp = Counter(r["spacy"]["reason"] for r in to_check if not r["spacy"]["accepted"])
+        print(f"  spaCy would reject {sum(sp.values())}/{len(to_check)} (signal only): "
+              f"{dict(sp.most_common(6))}")
     return recs
 
 
 def verify_tr(args, work, res, meta):
-    edits = {r["pair_id"]: r for r in accepted_edits(work, args.factor, meta["edit_model"])}
+    edits = {r["pair_id"]: r for r in translatable_edits(work, args.factor, meta["edit_model"],
+                                                          meta.get("judged", False))}
     recs = []
     for pid, e in edits.items():
         cid = f"tr:{args.factor}:{pid}"
@@ -1325,12 +1355,14 @@ def cmd_package(args, work):
     tok = tokenizer()
     pairs = []          # (pair_id, factor, direction, {lang: (a, b)}, verdicts)
     for factor in args.factors.split(","):
-        edits = {r["pair_id"]: r for r in accepted_edits(work, factor, args.edit_model)}
+        judged = not args.no_judge
+        edits = {r["pair_id"]: r for r in translatable_edits(work, factor, args.edit_model, judged)}
         trs = {r["pair_id"]: r for r in accepted_translations(work, factor, args.translate_model)}
+        tr_ok = quorum_pass(work, "tr", factor, args.translate_model) if judged else None
         bt_ok = None
-        if factor == "tense" or args.require_bt_negation:
+        if args.require_bt:
             if not args.backtrans_model:
-                raise SystemExit("--backtrans-model needed for tense")
+                raise SystemExit("--require-bt needs --backtrans-model")
             bt_path = work.p("verified", stage_name("bt", factor, args.backtrans_model,
                                                     args.translate_model) + ".jsonl")
             bt_ok = {(r["pair_id"], r["lang"]) for r in read_jsonl(bt_path) if r["accepted"]}
@@ -1340,7 +1372,8 @@ def cmd_package(args, work):
                 continue
             langs = {"en": (edits[pid]["a"], edits[pid]["b"])}
             for lang, v in t["langs"].items():
-                if v["accepted"] and (bt_ok is None or (pid, lang) in bt_ok):
+                if (v["accepted"] and (tr_ok is None or (pid, lang) in tr_ok)
+                        and (bt_ok is None or (pid, lang) in bt_ok)):
                     langs[lang] = (v["a"], v["b"])
             need = args.min_langs or len(FACTOR_LANGS[factor])
             if len(langs) - 1 >= need:
@@ -1420,6 +1453,8 @@ def main():
     s.add_argument("--sample-frac", type=float, default=0.1,
                    help="backtrans negation: fraction of pairs (tense: all)")
     s.add_argument("--json-mode", action="store_true", help="add response_format json_object")
+    s.add_argument("--no-judge", action="store_true",
+                   help="translate: all accepted edits, not only those the judge quorum passes")
     s.add_argument("--line-format", choices=["openai", "body"], default="openai")
     s.add_argument("--submit", action="store_true", help="create an ALCF batch (inputs on /eagle)")
     s.add_argument("--run", action="store_true", help="send interactively (no /eagle needed)")
@@ -1453,6 +1488,8 @@ def main():
                    help="MiniLM floor; negation lowers paraphrase cosine by design (README 3.3)")
     s.add_argument("--min-ratio", type=float, default=0.6)
     s.add_argument("--translate-model", help="backtrans: whose translations were back-translated")
+    s.add_argument("--spacy-gate", action="store_true",
+                   help="edit: reject on the spaCy flip/keep checks (default: log them only)")
 
     sub.add_parser("report")
 
@@ -1471,8 +1508,12 @@ def main():
     s.add_argument("--edit-model", required=True)
     s.add_argument("--translate-model", required=True)
     s.add_argument("--backtrans-model")
-    s.add_argument("--require-bt-negation", action="store_true",
-                   help="also require back-translation for negation (only sampled pairs survive)")
+    s.add_argument("--require-bt", action="store_true",
+                   help="also require the back-translation check (off: on the human check it "
+                   "mostly rejected good Japanese tense pairs; for negation only sampled pairs "
+                   "are back-translated, so only those survive)")
+    s.add_argument("--no-judge", action="store_true",
+                   help="skip the judge quorum (judge.py filter) for English and translations")
     s.add_argument("--min-langs", type=int, default=1, help="accepted target languages per "
                    "pair; a pair goes into each language shard where it passed, so pairs "
                    "missing some languages are kept (0 = all of the factor's languages)")

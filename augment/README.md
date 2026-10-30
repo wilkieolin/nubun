@@ -511,3 +511,42 @@ disagreements, so these are not population rates.
     human-OK Japanese tense items, on tense_no_flip(past->past / pres->pres):
     Llama's literal back-translation smooths the tense away, so for ja tense
     the back-translation check is mostly noise.
+
+### 10.2 Production filter (2026-10-29)
+
+The human check showed the spaCy flip/keep checks and the back-translation
+check reject many good pairs and catch few bad ones the quorum misses, so
+they are now logged, not gates. A pair reaches the corpus when:
+
+1. **English edit:** the edit model returned a variant that is not
+   identical to A (`verify edit`; the spaCy verdict is kept under `spacy`,
+   `--spacy-gate` restores the old gate), and the quorum passes it
+   (`judge.py filter edit`). Only quorum-passed edits are translated.
+2. **Translation, per language:** the translate-stage checks pass (null,
+   identical, char ratio, negation-marker count), and the quorum passes it
+   (`judge.py filter tr`).
+3. `package` reads both quorum files (`verified/quorum.{edit,tr}.<factor>.<model>.jsonl`).
+   Back-translation is optional (`--require-bt`), and `--no-judge` skips
+   the quorum.
+
+Judges (default `--judges`): gpt-oss-120b and gemma-4-31B on Sophia,
+inkling on Minerva. A pair fails when at least 2 of the 3 fail it, or when
+fewer than 2 return a usable verdict.
+
+On the v2 edits (same 600 candidates), the quorum passes 231 of 244 negation
+pairs and 176 of 179 tense pairs; 300 candidates per factor went in. Of the 25
+negation and 14 tense pairs spaCy would have rejected, the quorum passes most.
+Read by hand, those are spaCy errors: negations it attaches off the root,
+"he's" read as a tense change, entity tags that shift. The quorum fails the
+real no-flips ("I never should not have let her do it").
+
+Pipeline per factor (`--work augment/work/medium`, 3000 candidates per factor):
+
+    P="python augment/minpairs.py --work $W"; J="python augment/judge.py --work $W"; M=muse-spark-bf16
+    $P prepare edit --factor $f --model $M --run --cluster minerva
+    $P verify edit --factor $f --model $M
+    $J filter edit --factor $f --edit-model $M
+    $P prepare translate --factor $f --edit-model $M --model $M --run --cluster minerva
+    $P verify translate --factor $f --model $M
+    $J filter tr --factor $f --edit-model $M --translate-model $M
+    $P package --edit-model $M --translate-model $M --out data/minpairs_medium

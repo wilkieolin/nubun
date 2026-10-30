@@ -13,6 +13,10 @@ unknown recall and no faithfulness check. This adds:
            defect and language, pass rates and agreement with the automatic checks on real
            items; writes judge/judged.jsonl and judge/score.json
   sample   ~50 real items for the human check of the quorum -> judge/sample.json
+  filter   production gate (README §10.2): the quorum over one stage's accepted output,
+           edit (English pairs) or tr (translations of the quorum-passed English pairs),
+           -> verified/quorum.<stage>.<factor>.<generator>.jsonl, read by minpairs.py
+           prepare translate and package
 
 The planting model should be the generator (its own mistakes are what we want to catch); the
 judges should not be (a model approves its own output).
@@ -25,6 +29,8 @@ judges should not be (a model approves its own output).
   $P run --model inkling-bf16 --cluster minerva
   $P score --judges openai/gpt-oss-120b,google/gemma-4-31B-it,inkling-bf16
   $P sample --judges ...
+  $P filter edit --factor tense --edit-model muse-spark-bf16       (then prepare translate)
+  $P filter tr --factor tense --edit-model muse-spark-bf16 --translate-model muse-spark-bf16
 """
 import argparse
 import hashlib
@@ -87,6 +93,7 @@ Output only the JSON object {{"items": [{{"id": <id>, "faithful": true|false, "f
 
 FUTURE_NOTE = {"ja": " (the Japanese non-past of a one-off event, 見るよ or 来る, reads as future)"}
 DEVICE_NOTE = {("tense", "ja"): " (the past form of the main predicate: た, ました, でした, かった)"}
+JUDGES = "openai/gpt-oss-120b@sophia,google/gemma-4-31B-it@sophia,inkling-bf16@minerva"
 CRITERIA_EN = ("flipped", "minimal", "grammatical", "natural")
 CRITERIA_TR = ("faithful",) + CRITERIA_EN
 
@@ -327,9 +334,9 @@ def cmd_run(args, work):
     send(work, name, reqs, args.model, args, 1500)
 
 
-def verdicts(work, model, items_by_iid):
+def verdicts(work, model, items_by_iid, name=None):
     """{iid: {"ok": bool|None, criteria..., "problem"}} for one judge; None = no answer."""
-    name = f"judge.all.{mp.slug(model)}"
+    name = name or f"judge.all.{mp.slug(model)}"
     mapping = json.load(open(jdir(work, name + ".map.json")))
     res = mp.load_results(work, name)
     out = {}
@@ -507,6 +514,72 @@ def cmd_sample(args, work):
           f"{dict(Counter((it['lang'], it['why']) for it in out))}")
 
 
+# ---------------------------------------------------------------- filter
+def stage_items(args, work):
+    """Real items for one production stage: what the automatic checks accepted."""
+    f, items = args.factor, []
+    if args.stage == "edit":
+        for r in mp.accepted_edits(work, f, args.edit_model):
+            items.append({"iid": f"R:en:{f}:{r['pair_id']}", "factor": f, "direction": r["direction"],
+                          "lang": "en", "pair_id": r["pair_id"], "a": r["a"], "b": r["b"]})
+        return items
+    for r in mp.accepted_translations(work, f, args.translate_model):
+        for lang, v in r["langs"].items():
+            if v["accepted"]:
+                items.append({"iid": f"R:{lang}:{f}:{r['pair_id']}", "factor": f,
+                              "direction": r["direction"], "lang": lang, "pair_id": r["pair_id"],
+                              "en_a": r["en"]["a"], "en_b": r["en"]["b"], "a": v["a"], "b": v["b"]})
+    return items
+
+
+def cmd_filter(args, work):
+    from concurrent.futures import ThreadPoolExecutor
+    if args.stage == "tr" and not args.translate_model:
+        raise SystemExit("filter tr needs --translate-model")
+    items = stage_items(args, work)
+    if not items:
+        raise SystemExit("nothing to judge")
+    gen = args.edit_model if args.stage == "edit" else args.translate_model
+    tag = f"{args.stage}.{args.factor}.{mp.slug(gen)}"
+    judges = [j.rsplit("@", 1) for j in args.judges.split(",")]
+
+    def one(model, cluster):
+        reqs, mapping = judge_requests(items, model, args.seed)
+        name = f"judge.{tag}.{mp.slug(model)}"
+        with open(jdir(work, name + ".map.json"), "w") as f:
+            json.dump(mapping, f)
+        send(work, name, reqs, model, argparse.Namespace(
+            cluster=cluster, workers=args.workers, timeout=args.timeout), 1500)
+        return name
+
+    with ThreadPoolExecutor(len(judges)) as pool:
+        names = list(pool.map(lambda mc: one(*mc), judges))
+    by_iid = {it["iid"]: it for it in items}
+    per = {m: verdicts(work, m, by_iid, name) for (m, _), name in zip(judges, names)}
+    need = len(judges) // 2 + 1
+    rows, stats = [], defaultdict(Counter)
+    for it in items:
+        vs = {m: per[m].get(it["iid"], {"ok": None}) for m, _ in judges}
+        q = quorum(list(vs.values()), need)
+        crit = CRITERIA_EN if it["lang"] == "en" else CRITERIA_TR
+        failed = [c for c in crit if sum(v.get(c) is False for v in vs.values()) >= need]
+        rows.append({"pair_id": it["pair_id"], "lang": it["lang"], "direction": it["direction"],
+                     "quorum": q is True, "no_quorum": q is None, "failed": failed, "judges": vs})
+        st = stats[it["lang"]]
+        st["n"] += 1
+        st["pass"] += q is True
+        st["no_quorum"] += q is None
+        st.update(failed)
+    out = work.p("verified", f"quorum.{tag}.jsonl")
+    mp.write_jsonl(out, rows)
+    tot = sum(st["pass"] for st in stats.values()), sum(st["n"] for st in stats.values())
+    print(f"quorum {tag}: {pct(*tot)} pass  ->  {out}")
+    for lang, st in sorted(stats.items()):
+        fails = {c: st[c] for c in CRITERIA_TR if st[c]}
+        print(f"  {lang}  {pct(st['pass'], st['n'])}  no quorum {st['no_quorum']}  "
+              f"failing criteria (>= {need} judges) {fails}")
+
+
 # ---------------------------------------------------------------- main
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0],
@@ -531,6 +604,16 @@ def main():
     s.add_argument("--seed", type=int, default=0)
     mp.add_run_args(s)
 
+    s = sub.add_parser("filter", help="production quorum gate for one stage")
+    s.add_argument("stage", choices=["edit", "tr"])
+    s.add_argument("--factor", choices=mp.FACTORS, required=True)
+    s.add_argument("--edit-model", required=True)
+    s.add_argument("--translate-model")
+    s.add_argument("--judges", default=JUDGES, help="comma-separated model@cluster")
+    s.add_argument("--seed", type=int, default=0)
+    s.add_argument("--workers", type=int, default=16, help="concurrent requests per judge")
+    s.add_argument("--timeout", type=float, default=600)
+
     for name in ("score", "sample"):
         s = sub.add_parser(name)
         s.add_argument("--judges", required=True, help="comma-separated judge models")
@@ -543,7 +626,8 @@ def main():
 
     args = p.parse_args()
     work = mp.Work(args.work)
-    {"build": cmd_build, "run": cmd_run, "score": cmd_score, "sample": cmd_sample}[args.cmd](args, work)
+    {"build": cmd_build, "run": cmd_run, "score": cmd_score, "sample": cmd_sample,
+     "filter": cmd_filter}[args.cmd](args, work)
 
 
 if __name__ == "__main__":
