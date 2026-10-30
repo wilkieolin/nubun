@@ -47,6 +47,18 @@ Last updated 2026-10-30, at commit `dbe05ee` or later.
     The pair term disables gradient accumulation ("will NOT be applied"): the
     penalty run takes B=128 in one pass, so its step time may differ from the
     baseline's. The `mix` graph is unchanged.
+  - **Penalty run fails at execute, iteration 0** (2026-10-30,
+    `logs/minpairs-penalty-20261030T224344Z.out`, wsjob-j6ccb6t8, logs in
+    `logx/wsjob-j6ccb6t8oryvesr4xxbdmq/`): the forward pass runs, then weight
+    host 11 aborts with `Assertion !alloc.is_null()` in
+    `RuntimeBuffersWaxpy::get_buffer_for_read`, "Attempting to read a null
+    buffer, buf=5267 iter=0" (`weight-11/dbg_wgt_11.err`). The client reports
+    only a gRPC "Connection reset by peer" on WGT #11. Likely cause, not yet
+    confirmed: the one non-batch intermediate left, the pair sum (L, P, M, k),
+    which the compiler places on the host. Open: a cross-row op that stays
+    batch-major (a (B, B) pair matrix fed as input, `S @ x` over the batch), or
+    no cross-row op at all (encode each row's partner as a second input,
+    which roughly doubles the encoder cost).
 
 ## Loop
 
