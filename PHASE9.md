@@ -955,9 +955,22 @@ medium run under way.** Spec and results in `augment/README.md` §9-10.
   layout, plus `pair_id`, `factor` and `member`; the two members of a pair
   are consecutive rows. Each language shard keeps every pair that passed in
   that language.
-- **Scale.** The medium run (3000 candidates per factor) should give about
-  2k pairs per factor before translation losses. The plan's tens of
-  thousands is 5-10x that and needs no new tooling.
+- **Scale (medium run, 2026-10-30, `data/minpairs_medium64`).** From 3000
+  candidates per factor:
+  - The edit model skipped 15% of negation and 41% of tense candidates as
+    unnatural flips.
+  - English quorum kept 2367 negation and 1695 tense pairs (93%, 96% of
+    edits).
+  - Translation quorum passed 88-96% per language for negation (zh lowest,
+    then ru, fr, de) and 88-97% for tense (ar lowest, then ru). Tense has
+    no zh shard.
+  - Result: 32.5k pairs over 9 languages, 3.7-3.9k per language (zh 2.1k).
+    Only 8 pairs are longer than 64 tokens.
+  - Baseline on this set (seed-2 500k, X side) matches the pilot. Level 0:
+    tense median 2 slots, negation 44 (25% within the budget of 2), random
+    pairs 62.
+  - The plan's tens of thousands of English pairs is 5-10x this and needs
+    no new tooling.
 - **Training (code in, 2026-10-29).** Both trainers take minimal pairs:
   - **Wafer:** `--minpairs-dir --pairs-per-batch P` puts P pairs in rows
     (2i, 2i+1) of every batch, with the same language and direction. With

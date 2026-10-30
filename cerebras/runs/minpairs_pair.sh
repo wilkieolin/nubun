@@ -7,7 +7,8 @@
 #   penalty  the same, plus LAMBDA * relu(level-0 slot Hamming - BUDGET) per
 #            pair (vqvae/pairs.py). New graph: run `compile` first.
 # Data, once, on the user node (minpairs from `augment/minpairs.py package
-# --max-len 64`, copied to $DATA_DIR/minpairs):
+# --max-len 64`, copied to $DATA_DIR/minpairs; data/minpairs_medium64 already
+# carries its .sem.npz, so skip the precompute for it):
 #   python cerebras/precompute_opus_semantic.py --opus-dir $DATA_DIR/minpairs
 #   bash cerebras/unpack_opus.sh $DATA_DIR/minpairs $DATA_DIR/minpairs_npy
 # Usage:
