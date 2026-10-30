@@ -19,7 +19,7 @@
 # and the usual round-trip / codebook_stability readouts.
 set -u
 cd "$(dirname "$0")/../.."
-DATA_DIR="${DATA_DIR:-$HOME/code/nubun-copy/data}"
+DATA_DIR="${DATA_DIR:-$PWD/data}"   # as cerebras/submit_alcf.sh
 MINPAIRS="${MINPAIRS:-$DATA_DIR/minpairs_npy}"
 STEPS=${STEPS:-50000}
 SEED=${SEED:-1}
@@ -29,7 +29,7 @@ BUDGET=${BUDGET:-2}
 RUNS=${RUNS:-"mix penalty"}
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 COMMON=(--batch-size 128 --lr 6e-4 --steps "$STEPS" --warmup-steps 500
-        --ckpt-every 10000 --log-every 1000 --seed "$SEED"
+        --ckpt-every 10000 --keep-ckpts 1 --log-every 1000 --seed "$SEED"
         --minpairs-dir "$MINPAIRS" --pairs-per-batch "$PAIRS")
 PEN=(--lambda-pair "$LAMBDA" --pair-budget "$BUDGET" --pair-levels 1)
 [[ -d "$MINPAIRS" ]] || { echo "ERROR: $MINPAIRS missing (see header)" >&2; exit 2; }

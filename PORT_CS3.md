@@ -259,7 +259,7 @@ when python fails (`cerebras/export_logs.sh <wsjob>` does it by hand):
     bash cerebras/submit_alcf.sh m1               # recon + RVQ, real data
     bash cerebras/submit_alcf.sh m2               # full recipe
 
-`DATA_DIR` (default `$HOME/code/nubun-copy/data`) must hold the §4 files; the
+`DATA_DIR` (default `<repo>/data`) must hold the §4 files; the
 wrapper unpacks `opus100/*.npz` into `opus100_npy/` once so the appliance
 workers can memory-map them. `smoke`, `compile` and `m1` pin the same schedule
 constants (`M1_STEPS=2000`, `WARMUP=500`) and therefore share one compile.
@@ -284,7 +284,7 @@ Or call the script directly with the cluster flags:
     csctl cancel job <wsjob-id>
     csctl get cluster                    # per-node state
 
-**Status 2026-10-09:** data is staged on ALCF (`~/code/nubun-copy/data`,
+**Status 2026-10-09:** data is staged on ALCF (then `~/code/nubun-copy/data`, since removed for quota; now `<repo>/data`,
 including the `<lang>_en.sem.npz` targets) and unpacked; the canary executes;
 the real graph traces and compiles. What remains is in
 `cerebras/CS3_BRINGUP.md` §7 (execute the real graph, then M1, then M2).

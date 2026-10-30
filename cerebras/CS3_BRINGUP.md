@@ -51,9 +51,10 @@ Reconstructed from `cerebras_logs/executors/000001/run_meta.json` (24 compile /
   the same night — see §7 items 4–5. `m1`: 208 samples/s (~6.5 steps/s at
   B=32, vs ~3.0 on the GB10), recon 10.15 @100 → ~8.8–9.1 from step 1200 on,
   9.14 @2000; checkpoints round-trip to the eval format (`export_ckpt.py`).
-- Data is staged at `~/code/nubun-copy/data` (embedding table, token weights,
+- Data was staged at `~/code/nubun-copy/data` (removed 2026-10-30 for quota; the
+  default is now `<repo>/data`) (embedding table, token weights,
   parallel corpus, 9 opus100 shards **and** their `.sem.npz`), unpacked to
-  `~/code/nubun-copy/data/opus100_npy` for memory-mapped worker access.
+  `opus100_npy/` for memory-mapped worker access.
 
 **Run hygiene is now enforced by `cerebras/submit_alcf.sh`** (see §2b): per-run
 log/artifact/model dirs, proxy-free unbuffered client, mount dirs validated
@@ -430,7 +431,7 @@ Standalone raw-cstorch loop with bisection modes (via `submit_alcf.sh <mode>`):
 `--max-steps 10` of the pinned m1 schedule — no data, mounts only the repo.
 `smoke-m2` = the same with the semantic head + loss on (the M2 graph).
 `compile` = the M1 graph with real data, compile-only. `m1`/`m2` = training
-milestones on real data (`DATA_DIR`, default `~/code/nubun-copy/data`; the
+milestones on real data (`DATA_DIR`, default `<repo>/data`; the
 wrapper unpacks `opus100_npy/` once). Every mode: `logs/<mode>-<stamp>.log`,
 `cerebras_logs/<mode>-<stamp>/`, `model_dir/<mode>-<stamp>/`.
 

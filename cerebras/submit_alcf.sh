@@ -38,7 +38,7 @@ NOPROXY_ENV=(env -u HTTPS_PROXY -u https_proxy -u HTTP_PROXY -u http_proxy)
 
 # --- paths the appliance workers must see -------------------------------------
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DATA_DIR="${DATA_DIR:-$HOME/code/nubun-copy/data}"   # staged data (not in git)
+DATA_DIR="${DATA_DIR:-$REPO/data}"   # staged data (not in git; data/ is ignored)
 PYTHON_PATHS="${PYTHON_PATHS:-$REPO}"
 NUM_CSX="${NUM_CSX:-1}"
 
@@ -76,11 +76,13 @@ on_exit() {
 trap 'on_exit $?' EXIT
 
 need_data() {   # modes that read the staged data
-    for f in embedding_table.pt token_weights.pt parallel_corpus.npz opus100; do
+    for f in embedding_table.pt token_weights.pt parallel_corpus.npz; do
         [[ -e "$DATA_DIR/$f" ]] || { echo "ERROR: $DATA_DIR/$f missing" >&2; exit 2; }
     done
     # Workers memory-map UNPACKED shards (see cerebras/unpack_opus.sh); build once.
+    # Once unpacked, the packed $DATA_DIR/opus100 can be deleted to save quota.
     if [[ ! -d "$DATA_DIR/opus100_npy/zh_en" ]]; then
+        [[ -d "$DATA_DIR/opus100" ]] || { echo "ERROR: neither $DATA_DIR/opus100_npy nor $DATA_DIR/opus100" >&2; exit 2; }
         echo "=== unpacking opus shards into $DATA_DIR/opus100_npy (one-time)"
         bash "$REPO/cerebras/unpack_opus.sh" "$DATA_DIR/opus100" "$DATA_DIR/opus100_npy"
     fi
