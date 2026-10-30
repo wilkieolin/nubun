@@ -463,3 +463,51 @@ Reading the table:
 Next, after the human check: combine the two filters (keep a pair when both
 auto and quorum pass, or let the quorum override auto rejections if the
 human check supports it), then run the medium run.
+
+### 10.1 Human check of the quorum, and fixes
+
+Human read of 50 sampled items (`judge/human.json`): 16 BAD. Weighted to
+disagreements, so these are not population rates.
+
+- **Original rubric: the quorum caught only 3 of the 16 BAD items.** Planted
+  defects did not predict this. Most human BADs are grammatical, minimal
+  pairs whose flipped member nobody would say, or which contradicts its own
+  sentence:
+  - present tense of one-off events ("They try me out, and they like my
+    work"; "I use goat cheese this time"), and the same in Japanese, where
+    the non-past reads as future;
+  - wishes put in the past ("We wished you an enjoyable pastime");
+  - negations that contradict the continuation ("Much has not been
+    accomplished: the regime has been ousted").
+- **Fixes:**
+  1. A `natural` criterion in both judge rubrics.
+  2. Edit prompts: to_present only for habitual, ongoing or stative
+     situations; skip wishes and greetings for to_past; skip negations that
+     contradict their own sentence or break a suggestion; toggle only the
+     main clause of "X, and Y".
+  3. Back-translation treats Japanese future as present (`FUT_AS_PRES`).
+- **Results:**
+
+  | filter | catches BAD (of 16) | fails OK (of 34) |
+  |---|---|---|
+  | automatic checks | 5 | 14 |
+  | quorum, new rubric | 9 | 1 |
+  | gemma-4 alone | 12 | 7 |
+  | auto + quorum | 12 | 15 |
+
+  - The planted-defect catch rate is unchanged (95%).
+  - **Leakage:** some rubric and prompt examples paraphrase BAD items from
+    this sample. On the 8 BAD items with no such example, the quorum catches
+    4. A fresh human sample is needed for a clean number.
+  - New edit prompts on the same 600 candidates:
+    - Of the 16 human-BAD items, the new prompts skip 12. Of the 34 OK
+      items, they skip 4.
+    - Of the English pairs the new quorum fails, they skip 26 of 43.
+    - Tense acceptance falls 78% -> 55%. to_present falls 123 -> 59, which
+      is intended: one-off past events are skipped. Negation acceptance is
+      unchanged at 73%.
+  - Fix 3 moved ja back-translation acceptance only slightly (tense
+    82.9 -> 84.2%). The automatic checks still fail 7 of the 10
+    human-OK Japanese tense items, on tense_no_flip(past->past / pres->pres):
+    Llama's literal back-translation smooths the tense away, so for ja tense
+    the back-translation check is mostly noise.

@@ -333,6 +333,8 @@ For each input sentence, toggle the polarity of the MAIN clause's finite verb:
 - Never add or remove adverbs such as never, anymore, at all, still.
 - When removing a negation, words it licenses must change too: any/anyone/anything -> some/someone/something. If one cannot change cleanly (anymore, ever, even, yet, at all, either), use op "skip".
 - The main clause is the one carrying the content. If the main verb is only a discourse frame (I mean, you know, I guess, I think, I hope, I'm sure, it seems), use op "skip".
+- Toggle only the main clause. In "X, and Y" toggle X alone, never both.
+- The variant must make sense as a whole. Use op "skip" when toggling contradicts the rest of the sentence ("Much has been accomplished: the regime has been ousted."; "He ordered them burned, but you still run across one."; "They don't trust me, and they're not the first to raise that concern."), or when it turns a suggestion, offer or request into nonsense ("Why don't you come in?").
 - Use op "skip" (variant null) for: fragments, headlines, quotations, sentences whose only negation is in a subordinate clause, and idioms whose meaning the toggle would change (can't help, not only, no doubt, nothing but, don't have to tell me twice).
 
 Input: a JSON array of {"id", "text"}.
@@ -350,6 +352,9 @@ For each input sentence, switch the MAIN clause between present and past:
 - Carry sequence-of-tense agreement into every clause that depends on the main verb, consistently ("He says he knows." <-> "He said he knew."; "I promised I wouldn't" <-> "I promise I won't").
 - Keep aspect: progressive stays progressive (is going <-> was going), perfect stays perfect (has gone <-> had gone).
 - Change nothing else: same words, word order, punctuation, person and number.
+- Both members must be something a fluent speaker would naturally say. Read the variant on its own: if it only works as narration, a stage direction, a plan or a future, use op "skip".
+- to_present only for habitual, ongoing or stative situations ("She worked at the bank." -> "She works at the bank."). Skip completed one-off events, including those pinned to one occasion ("this time", "when I saw her"): "They tried me out." -> *"They try me out."
+- to_past: skip wishes, greetings, thanks and performatives whose past form is odd ("We wish you a pleasant stay.", "I promise.").
 - Use op "skip" (variant null) for: timeless generalities (scientific facts, definitions, proverbs, statistics), events anchored to a specific past time (dates, years, "once", "back then") or a time adverbial that conflicts with the new tense, completed one-off events whose present form would read as a stage direction or headline, futures, modals (can, must, should, may, might, would, could), headlines, quotations and fragments.
 
 Input: a JSON array of {"id", "text"}.
@@ -358,7 +363,7 @@ Output only the JSON object {"items": [{"id": <id>, "op": "to_past" | "to_presen
 Examples:
 {"id": 1, "text": "The children are playing in the park."} -> {"id": 1, "op": "to_past", "variant": "The children were playing in the park."}
 {"id": 2, "text": "He said that he knew the answer."} -> {"id": 2, "op": "to_present", "variant": "He says that he knows the answer."}
-{"id": 3, "text": "The company has opened three new offices."} -> {"id": 3, "op": "to_past", "variant": "The company had opened three new offices."}
+{"id": 3, "text": "They tried me out, and they liked my work."} -> {"id": 3, "op": "skip", "variant": null}
 {"id": 4, "text": "Water boils at 100 degrees."} -> {"id": 4, "op": "skip", "variant": null}""",
 }
 
@@ -946,8 +951,10 @@ def stranded_npi(neg, aff):
     return hit
 
 
-def verify_english(factor, direction, pairs, min_cos, main_clause=True):
-    """pairs: [(a, b)] -> [dict(accepted, reason, ...)] (README §3.3)."""
+def verify_english(factor, direction, pairs, min_cos, main_clause=True, fut_as_pres=False):
+    """pairs: [(a, b)] -> [dict(accepted, reason, ...)] (README §3.3).
+    fut_as_pres: back-translation of a language whose non-past form also means future
+    (Japanese 見る -> "will see"), so a future member counts as present."""
     docs = list(nlp().pipe([t for ab in pairs for t in ab], batch_size=128))
     cos = cosines(pairs)
     out = []
@@ -955,6 +962,8 @@ def verify_english(factor, direction, pairs, min_cos, main_clause=True):
     for k, (a, b) in enumerate(pairs):
         da, db = docs[2 * k], docs[2 * k + 1]
         aa, ab = doc_attributes(da), doc_attributes(db)
+        if fut_as_pres:
+            aa, ab = ({**x, "tense": "pres" if x["tense"] == "fut" else x["tense"]} for x in (aa, ab))
         ed = token_edit_distance(a, b)
         budget = 3 if factor == "negation" else n_finite(da) + 1
         if not main_clause:      # back-translation: imparfait etc. come back as "was giving"
@@ -984,13 +993,20 @@ def verify_english(factor, direction, pairs, min_cos, main_clause=True):
     return out
 
 
+FUT_AS_PRES = {"ja"}     # non-past form doubles as future
+
+
 def run_english_verifier(factor, records, min_cos, main_clause=True):
-    """records with 'direction', 'a', 'b' -> same records + verdict fields, grouped by direction."""
+    """records with 'direction', 'a', 'b' (and 'lang' for back-translations) -> same records
+    + verdict fields, grouped by direction and by whether future counts as present."""
     for d in DIRECTIONS[factor]:
-        idx = [k for k, r in enumerate(records) if r["direction"] == d]
-        if idx:
+        for fut in (False, True):
+            idx = [k for k, r in enumerate(records) if r["direction"] == d
+                   and (not main_clause and r.get("lang") in FUT_AS_PRES) == fut]
+            if not idx:
+                continue
             vs = verify_english(factor, d, [(records[k]["a"], records[k]["b"]) for k in idx],
-                                min_cos, main_clause)
+                                min_cos, main_clause, fut_as_pres=fut)
             for k, v in zip(idx, vs):
                 records[k].update(v)
 

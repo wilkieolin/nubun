@@ -68,23 +68,26 @@ JUDGE_EN = """You audit English minimal pairs for a dataset. In each item, B sho
 For each item decide:
 - "flipped": B differs from A in {fname} exactly as the relation states, in the main clause.
 - "minimal": apart from that flip, B means the same as A: same subject (person and number), same content words, names, numbers and places{other}. Changes the flip forces are fine: {allowed}.
-- "grammatical": B is grammatical, natural English, at least as well formed as A.
+- "grammatical": B is grammatical English, at least as well formed as A.
+- "natural": B, read on its own, is something a fluent speaker would plausibly say, and it is coherent with the rest of its own sentence. Fail it when B contradicts its own continuation ("Much has not been accomplished: the regime has been ousted."), when a suggestion or offer stops making sense ("Why do you come in?"), or when a present-tense B only works as narration, a stage direction, a plan or a future ("They try me out, and they like my work."; "I use goat cheese this time."), or a past-tense B turns a wish or greeting odd ("We wished you a pleasant stay!").
 Be strict: these pairs teach a model what {fname} is, so a pair with any other difference is useless.
 
-Output only the JSON object {{"items": [{{"id": <id>, "flipped": true|false, "minimal": true|false, "grammatical": true|false, "problem": <a few words, or null>}}, ...]}}, one item per input id, in input order. No commentary."""
+Output only the JSON object {{"items": [{{"id": <id>, "flipped": true|false, "minimal": true|false, "grammatical": true|false, "natural": true|false, "problem": <a few words, or null>}}, ...]}}, one item per input id, in input order. No commentary."""
 
 JUDGE_TR = """You audit {language} translations of English minimal pairs for a dataset. Each item gives an English pair EN_A, EN_B that differ only in {fname} ({fdesc}; "relation" says which way), and a {language} pair A, B.
 For each item decide:
 - "faithful": A translates EN_A and B translates EN_B (meaning, not word for word).
 - "flipped": B differs from A in {fname} as the relation states, with the language's normal grammatical device{device}.
 - "minimal": apart from that flip, A and B are worded identically, except for changes the flip forces in {language} (agreement, particles, word order).
-- "grammatical": A and B are both grammatical, natural {language}.
+- "grammatical": A and B are both grammatical {language}.
+- "natural": B, read on its own, is something a fluent speaker would plausibly say, and coherent with the rest of its own sentence. Fail it when B contradicts its own continuation, when a suggestion or offer stops making sense, or when a present-tense B only reads as narration, a stage direction, a plan or a future{future_note}, or a past-tense B turns a wish or greeting odd.
 Be strict: these pairs teach a model what {fname} is, so a pair with any other difference is useless.
 
-Output only the JSON object {{"items": [{{"id": <id>, "faithful": true|false, "flipped": true|false, "minimal": true|false, "grammatical": true|false, "problem": <a few words, or null>}}, ...]}}, one item per input id, in input order. No commentary."""
+Output only the JSON object {{"items": [{{"id": <id>, "faithful": true|false, "flipped": true|false, "minimal": true|false, "grammatical": true|false, "natural": true|false, "problem": <a few words, or null>}}, ...]}}, one item per input id, in input order. No commentary."""
 
+FUTURE_NOTE = {"ja": " (the Japanese non-past of a one-off event, 見るよ or 来る, reads as future)"}
 DEVICE_NOTE = {("tense", "ja"): " (the past form of the main predicate: た, ました, でした, かった)"}
-CRITERIA_EN = ("flipped", "minimal", "grammatical")
+CRITERIA_EN = ("flipped", "minimal", "grammatical", "natural")
 CRITERIA_TR = ("faithful",) + CRITERIA_EN
 
 
@@ -263,7 +266,7 @@ def cmd_build(args, work):
             if not (isinstance(obj, dict) and isinstance(obj.get("A"), str) and isinstance(obj.get("B"), str)):
                 p["auto"] = {"accepted": False, "reason": "bt:unparsed"}
                 continue
-            chk.append({"direction": p["direction"], "a": obj["A"].strip(), "b": obj["B"].strip(), "p": p})
+            chk.append({"direction": p["direction"], "lang": p["lang"], "a": obj["A"].strip(), "b": obj["B"].strip(), "p": p})
         mp.run_english_verifier(factor, chk, args.min_cos, main_clause=False)
         for c in chk:
             c["p"]["auto"] = {"accepted": c["accepted"], "reason": c["reason"] and "bt:" + c["reason"],
@@ -295,7 +298,8 @@ def judge_requests(items, model, seed):
             system = JUDGE_EN.format(fname=fname, fdesc=fdesc, other=other, allowed=allowed)
         else:
             system = JUDGE_TR.format(language=lang_name(lang), fname=fname, fdesc=fdesc,
-                                     device=DEVICE_NOTE.get((factor, lang), ""))
+                                     device=DEVICE_NOTE.get((factor, lang), ""),
+                                     future_note=FUTURE_NOTE.get(lang, ""))
         for k, ch in enumerate(chunked(its, JUDGE_CHUNK)):
             cid = f"judge:{tag}:{factor}:{lang}:{k}"
             user = [{"id": j, "relation": mp.FACTOR_GLOSS[(factor, it["direction"])],
@@ -443,6 +447,19 @@ def cmd_score(args, work):
                 if sum(v.get(c) is False for v in it["judges"].values()) >= 2:
                     cnt[c] += 1
         print(f"  {lang_kind}: {dict(cnt.most_common())}")
+    human_path = jdir(work, "human.json")
+    if os.path.exists(human_path):
+        human = json.load(open(human_path))           # {iid: "ok" | "bad"} from the review page
+        hs = [it for it in items if it["iid"] in human]
+        print(f"\nAgainst the human check ({len(hs)} items, {sum(human[it['iid']] == 'bad' for it in hs)} BAD;"
+              " sample weighted to disagreements, so not population rates)")
+        score["human"] = {}
+        for c, nm in zip(cols, names):
+            tp = sum(human[it["iid"]] == "bad" and caught(it, c) for it in hs)
+            fp = sum(human[it["iid"]] == "ok" and caught(it, c) for it in hs)
+            nb = sum(human[it["iid"]] == "bad" for it in hs)
+            score["human"][c] = {"catch_bad": tp, "n_bad": nb, "fail_ok": fp, "n_ok": len(hs) - nb}
+            print(f"  {nm:<16s} catches BAD {tp:>2d}/{nb:<3d} fails OK {fp:>2d}/{len(hs) - nb}")
     with open(jdir(work, "score.json"), "w") as f:
         json.dump(score, f, indent=1)
     print(f"\nwrote {jdir(work, 'judged.jsonl')}, {jdir(work, 'score.json')}")
