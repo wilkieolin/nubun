@@ -234,6 +234,12 @@ class ResidualVectorQuantizer(nn.Module):
         self.beta_commit = beta_commit
         self.use_ema = False
         self.stop_index = 0  # convention (unused when run without stop-mask)
+        # Phase 9 branch 2: when set, forward also returns every level's code
+        # assignment, hard (one-hot) and soft (softmax over distances at
+        # temperature pair_tau, relative to the row's mean gap to the nearest
+        # code), for the minimal-pair Hamming penalty (vqvae/pairs.py).
+        self.pair_tau = None
+        self.pair_levels = n_levels     # levels returned (from 0); the rest are skipped
         scale = 1.0 / (d_code ** 0.5)
         self.codebooks = nn.ParameterList(
             [nn.Parameter(torch.randn(k, d_code) * scale) for _ in range(n_levels)])
@@ -249,6 +255,7 @@ class ResidualVectorQuantizer(nn.Module):
         codebook = flat.new_zeros(())
         idx0 = None
         usage = None
+        hards, softs = [], []
         # float, not int64: this arange feeds the code-selection compare, and any
         # i64 tensor that has to move on-wafer aborts the CS-3 compiler
         # (get_mov_simd_width asserts num_bits == 16 || 32).
@@ -274,6 +281,11 @@ class ResidualVectorQuantizer(nn.Module):
             dmin = dist.amin(dim=1, keepdim=True)                     # (N, 1)
             onehot = (dist == dmin).to(flat.dtype)                    # (N, k)
             onehot = onehot / onehot.sum(dim=1, keepdim=True).clamp(min=1.0)
+            if self.pair_tau is not None and level < self.pair_levels:
+                gap = dist - dmin                                     # >= 0, 0 at the code
+                scale = gap.mean(dim=1, keepdim=True).detach().clamp(min=1e-6)
+                hards.append(onehot)
+                softs.append(F.softmax(-gap / (self.pair_tau * scale), dim=1))
             zq = onehot @ cb                                          # (N, d)
             # commit binds the residual to its code; codebook pulls the code to it
             commit = commit + (residual - zq.detach()).pow(2).mean()
@@ -290,6 +302,9 @@ class ResidualVectorQuantizer(nn.Module):
         # Straight-through on the full multi-level sum
         z_q_flat = flat + (quantized - flat).detach()
         losses = {"commit": self.beta_commit * commit, "codebook": codebook}
+        if self.pair_tau is not None:      # (L, B, M, k); not losses, read by pairs.py
+            losses["assign_hard"] = torch.stack(hards).view(len(hards), B, M, self.k)
+            losses["assign_soft"] = torch.stack(softs).view(len(softs), B, M, self.k)
         return z_q_flat.view(B, M, D), idx0.view(B, M), losses, usage
 
     # --- compatibility shims (operate on level-0 indices; unused w/o stop-mask) ---

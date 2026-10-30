@@ -958,11 +958,29 @@ medium run under way.** Spec and results in `augment/README.md` §9-10.
 - **Scale.** The medium run (3000 candidates per factor) should give about
   2k pairs per factor before translation losses. The plan's tens of
   thousands is 5-10x that and needs no new tooling.
-- **Training.** The wafer trainer has no second-corpus mixer and no pair
-  co-location, and the quantiser returns only level-0 indices, so a
-  full-stack Hamming penalty needs it to expose per-level assignments.
-  Order: (1) mix and co-locate only, at 50k steps against the
-  `seed_pair.sh` baseline; (2) add the penalty, which is a new compile.
+- **Training (code in, 2026-10-29).** Both trainers take minimal pairs:
+  - **Wafer:** `--minpairs-dir --pairs-per-batch P` puts P pairs in rows
+    (2i, 2i+1) of every batch, with the same language and direction. With
+    P=0 the batches are bit-identical to before, and the mix alone does not
+    change the graph.
+  - **GB10:** `--minpairs-fraction` mixes in whole batches of pairs.
+  - **Penalty** (`--lambda-pair`, `vqvae/pairs.py`): relu(slot Hamming -
+    budget). The value is exact, from the hard codes; the gradient comes
+    from softmax assignments. It is built from sums only (wafer-safe, but
+    not yet compiled on the wafer).
+  - **Depth.** The penalty counts level 0 only by default (`--pair-levels`).
+    In the converged seed-2 model, pair members already differ in 63 of 64
+    slots over all 8 levels, like unrelated sentences, so a small budget on
+    the full stack would fight reconstruction. Level 0 (`scripts/pair_hamming.py`,
+    pilot pairs): tense pairs differ in a median of 2 slots, random
+    sentences in 62. Negation is bimodal (median 47): an inserted negator
+    shifts the positional code, which is what the penalty is meant to break.
+  - **GB10 A/B** (B=16, 1500 steps, 25% pair batches): pair level-0 Hamming
+    5.2 at lambda 0 vs 0.4 at lambda 1, recon 7.96 vs 7.98. This is early
+    training, so it only shows the penalty works.
+  - **Next:** `cerebras/runs/minpairs_pair.sh`, a `compile` check of the
+    penalty graph, then a mix-only and a penalty run (seed 1, 50k, 8 pairs
+    per batch of 128), each compared with `seed_pair.sh` seed 1.
 - **Open: the substitution test (C2), the readout, is not written yet.**
 
 **Readout for both: the substitution test (C2).** Swap a stable radical in or

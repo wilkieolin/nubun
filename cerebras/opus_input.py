@@ -17,6 +17,15 @@ The pipeline is otherwise identical to Opus100Dataset: pick a shard uniformly,
 a row uniformly, then 50/50 swap direction (X->en vs en->X). Kept self-contained
 in cerebras/ so the shared GB10 data code stays untouched.
 
+Minimal pairs (PHASE9 §8 branch 2): with minpairs_dir and pairs_per_batch=P,
+the first 2P rows of every batch are P minimal pairs from augment/minpairs.py
+package shards (same layout plus pair_id/factor/member, members in consecutive
+rows), each pair at rows (2i, 2i+1) with the same language and direction; the
+other B-2P rows are opus as before. with_pair_mask adds `pair_mask` (B/2,)
+float, 1 for the first P row pairs, for the Hamming penalty (vqvae/pairs.py).
+Pairs whose members do not both fit seq_len are never drawn, so truncation
+cannot cut the changed word.
+
 Contract: make_opus_input_fn(...) returns a zero-arg `input_fn` that yields
 pre-batched CPU-tensor dicts {src_ids, dec_in, labels, label_mask, src_lang_id,
 tgt_lang_id [, token_weight_t] [, sem_target]}, matching what
@@ -140,7 +149,8 @@ def make_opus_input_fn(opus_dir, seq_len, batch_size, num_steps,
                        parallel_corpus="data/parallel_corpus.npz",
                        seed=42, langs=None, with_semantic=False,
                        sem_dir=None, d_sem=384, pad=None, token_weight=None,
-                       max_len=None):
+                       max_len=None, minpairs_dir=None, pairs_per_batch=0,
+                       with_pair_mask=False):
     """Build the cstorch input_fn. `num_steps` batches are produced (plus a small
     buffer). When with_semantic, `<lang>_en.sem.npz` (from precompute_opus_semantic.py)
     must sit in sem_dir (defaults to opus_dir) and carry src_sem/tgt_sem.
@@ -174,6 +184,30 @@ def make_opus_input_fn(opus_dir, seq_len, batch_size, num_steps,
     if with_semantic:                      # fail at construction, not on a worker
         for lang, _, _ in shard_meta:
             _open_sem(sem_dir, lang)
+    P = pairs_per_batch if minpairs_dir else 0
+    if P:
+        if 2 * P > batch_size or batch_size % 2:
+            raise ValueError(f"pairs_per_batch={P} needs an even batch_size >= {2 * P}")
+        minpairs_dir = os.path.abspath(minpairs_dir)
+        mp_meta, _ = _scan_shards(minpairs_dir, short_codes, langs)
+        pair_starts = {}                   # path -> first-member rows of fitting pairs
+        for lang, _, path in mp_meta:
+            with np.load(path, allow_pickle=False) as z:
+                pid, mem = np.asarray(z["pair_id"]), np.asarray(z["member"])
+                so, to = np.asarray(z["src_offsets"]), np.asarray(z["tgt_offsets"])
+            fits = np.maximum(np.diff(so), np.diff(to)) <= seq_len
+            r = np.flatnonzero((mem[:-1] == 0) & (mem[1:] == 1) & (pid[:-1] == pid[1:])
+                               & fits[:-1] & fits[1:])
+            pair_starts[path] = r
+            if with_semantic:
+                _open_sem(minpairs_dir, lang)
+        mp_meta = [m for m in mp_meta if len(pair_starts[m[2]])]
+        if not mp_meta:
+            raise ValueError(f"no minimal pairs fit seq_len={seq_len} in {minpairs_dir}")
+        print(f"minpairs: {P} pairs per batch of {batch_size} from "
+              f"{[(m[0], len(pair_starts[m[2]])) for m in mp_meta]} (pairs fitting seq_len)")
+    elif with_pair_mask:
+        raise ValueError("with_pair_mask needs minpairs_dir and pairs_per_batch > 0")
 
     # Lazy per-shard caches (mmap'd views; built inside the worker process).
     tok_cache, sem_cache = {}, {}
@@ -193,10 +227,11 @@ def make_opus_input_fn(opus_dir, seq_len, batch_size, num_steps,
             elig_cache[path] = np.flatnonzero(longest <= max_len)
         return elig_cache[path]
 
-    def _sem(lang):
-        if lang not in sem_cache:
-            sem_cache[lang] = _open_sem(sem_dir, lang)
-        return sem_cache[lang]
+    def _sem(lang, root=None):
+        key = (root or sem_dir, lang)
+        if key not in sem_cache:
+            sem_cache[key] = _open_sem(root or sem_dir, lang)
+        return sem_cache[key]
 
     n_shards = len(shard_meta)
 
@@ -219,19 +254,11 @@ def make_opus_input_fn(opus_dir, seq_len, batch_size, num_steps,
                 slang = np.empty(B, dtype=np.int64)
                 tlang = np.empty(B, dtype=np.int64)
                 sem = np.empty((B, d_sem), dtype=np.float32) if with_semantic else None
-                for i in range(B):
-                    si = int(rng.integers(0, n_shards))
-                    lang, n_pairs, path = shard_meta[si]
-                    d = _tokens(path)
-                    if max_len is None:
-                        row = int(rng.integers(0, n_pairs))
-                    else:
-                        elig = _eligible(path, d)
-                        row = int(elig[rng.integers(0, len(elig))])
+
+                def put(i, lang, d, row, swap, root=None):
                     so, to = d["src_offsets"], d["tgt_offsets"]
                     x_ids = np.asarray(d["src_tokens"][so[row]:so[row + 1]])
                     en_ids = np.asarray(d["tgt_tokens"][to[row]:to[row + 1]])
-                    swap = rng.random() < 0.5           # en->X instead of X->en
                     if not swap:
                         s_ids, t_ids = x_ids, en_ids
                         slang[i], tlang[i] = lang_to_idx[lang], en_idx
@@ -241,8 +268,27 @@ def make_opus_input_fn(opus_dir, seq_len, batch_size, num_steps,
                     src[i] = _fix_len(s_ids, T, pad, eos)
                     tgt[i] = _fix_len(t_ids, T, pad, eos)
                     if with_semantic:                   # target = MiniLM(source)
-                        src_sem, tgt_sem = _sem(lang)
+                        src_sem, tgt_sem = _sem(lang, root)
                         sem[i] = tgt_sem[row] if swap else src_sem[row]  # fp16 -> fp32
+
+                for j in range(P):                      # minimal pairs: rows 2j, 2j+1
+                    lang, _, path = mp_meta[int(rng.integers(0, len(mp_meta)))]
+                    starts = pair_starts[path]
+                    row = int(starts[rng.integers(0, len(starts))])
+                    swap = rng.random() < 0.5           # both members the same way
+                    d = _tokens(path)
+                    put(2 * j, lang, d, row, swap, minpairs_dir)
+                    put(2 * j + 1, lang, d, row + 1, swap, minpairs_dir)
+                for i in range(2 * P, B):
+                    si = int(rng.integers(0, n_shards))
+                    lang, n_pairs, path = shard_meta[si]
+                    d = _tokens(path)
+                    if max_len is None:
+                        row = int(rng.integers(0, n_pairs))
+                    else:
+                        elig = _eligible(path, d)
+                        row = int(elig[rng.integers(0, len(elig))])
+                    put(i, lang, d, row, rng.random() < 0.5)   # swap: en->X instead of X->en
                 # Host-side AR shift + int32. dec_in/labels are (B, T-1); labels
                 # stays un-sliced downstream so its embedding lookup lowers.
                 dec_in = tgt[:, :-1].astype(np.int32)
@@ -263,6 +309,10 @@ def make_opus_input_fn(opus_dir, seq_len, batch_size, num_steps,
                     batch["token_weight_t"] = torch.from_numpy(np.ascontiguousarray(tw))
                 if with_semantic:
                     batch["sem_target"] = torch.from_numpy(sem)
+                if with_pair_mask:
+                    pm = np.zeros(B // 2, dtype=np.float32)
+                    pm[:P] = 1.0
+                    batch["pair_mask"] = torch.from_numpy(pm)
                 yield batch
 
         return gen()

@@ -22,9 +22,10 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 
 from vqvae.data import (
-    Opus100Dataset, ParallelDataset, PivotDataset, combined_split, load_corpus,
-    make_collate, make_streaming_collate,
+    MinPairsDataset, Opus100Dataset, ParallelDataset, PivotDataset, combined_split,
+    load_corpus, make_collate, make_pair_collate, make_streaming_collate,
 )
+from vqvae.pairs import pair_hamming_loss
 from vqvae.losses import (
     length_penalty, reconstruction_loss, semantic_loss, usage_entropy,
 )
@@ -286,6 +287,21 @@ def main():
                         help="Fraction of training batches drawn from the pivot "
                              "(non-en-centric) corpus vs opus100 (en-centric). "
                              "0 disables. Only used with --corpus opus100.")
+    parser.add_argument("--minpairs-dir", default=None,
+                        help="Phase 9 branch 2: minimal-pair shards (augment/minpairs.py "
+                             "package); batches of B/2 pairs mixed in per batch")
+    parser.add_argument("--minpairs-fraction", type=float, default=0.0,
+                        help="fraction of batches that are minimal-pair batches "
+                             "(--corpus opus100 only)")
+    parser.add_argument("--lambda-pair", type=float, default=0.0,
+                        help="weight of the pair Hamming penalty on minimal-pair "
+                             "batches (vqvae/pairs.py; needs --use-rvq)")
+    parser.add_argument("--pair-budget", type=float, default=2.0,
+                        help="slots a pair's code stacks may differ in for free")
+    parser.add_argument("--pair-tau", type=float, default=0.1,
+                        help="softmax temperature of the penalty's soft assignments")
+    parser.add_argument("--pair-levels", type=int, default=1,
+                        help="RVQ levels (from 0) the pair Hamming counts; 1 = level 0")
     parser.add_argument("--tie-embeddings", action="store_true",
                         help="Phase 8 E1: share the encoder and decoder token_emb (one "
                              "XLM-R table). Halves embedding params vs two separate copies; "
@@ -430,6 +446,11 @@ def main():
         unwrapped = model.module
     else:
         unwrapped = model
+    if args.lambda_pair > 0 and not (args.use_rvq and args.minpairs_dir and args.minpairs_fraction > 0):
+        raise SystemExit("--lambda-pair needs --use-rvq, --minpairs-dir and --minpairs-fraction")
+    if args.use_rvq and args.minpairs_fraction > 0:   # pair Hamming is logged even at lambda 0
+        unwrapped.quantizer.pair_tau = args.pair_tau
+        unwrapped.quantizer.pair_levels = args.pair_levels
 
     log(f"\nDevice: {device}")
 
@@ -475,6 +496,17 @@ def main():
                 rng=np.random.default_rng(args.seed + 13))
         else:
             train_loader = opus_loader
+        if args.minpairs_fraction > 0.0:
+            mp_ds = MinPairsDataset(args.minpairs_dir, meta.short_codes, seed=args.seed)
+            mp_loader = DataLoader(mp_ds, batch_size=args.batch_size,
+                                   collate_fn=make_pair_collate(meta.pad_token_id),
+                                   num_workers=0)
+            log(f"  MIXING minimal pairs ({mp_ds.n_pairs} pair-languages from "
+                f"{[l for l, _, _ in mp_ds.shards]}) at minpairs_fraction="
+                f"{args.minpairs_fraction}, lambda_pair={args.lambda_pair}")
+            train_loader = _MixedLoader(
+                train_loader, mp_loader, opus_fraction=1.0 - args.minpairs_fraction,
+                rng=np.random.default_rng(args.seed + 29))
     elif args.corpus == "both":
         # Mix at the iterator level: alternate per-batch
         flores_ds = ParallelDataset(train_ids, train_lens)
@@ -551,7 +583,7 @@ def main():
     t_start = time.time()
     log_buf = {"recon": 0.0, "commit": 0.0, "codebook": 0.0, "sem": 0.0,
                "lenpred": 0.0, "len_frac": 0.0, "avg_len": 0.0, "lagrangian": 0.0,
-               "src_len": 0.0, "n": 0}
+               "src_len": 0.0, "pair_ham": 0.0, "n_pair": 0, "n": 0}
     while step < args.steps:
         epoch += 1
         for batch in train_loader:
@@ -619,6 +651,14 @@ def main():
                     use_l = -usage_entropy(out["usage"])
                     loss = loss + args.lambda_use * use_l
 
+                # Phase 9 branch 2: code stacks of a minimal pair differ in <= budget slots
+                pair_ham = None
+                if "pair_mask" in batch and "assign_hard" in vq_l:
+                    pair_pen, pair_ham = pair_hamming_loss(
+                        vq_l["assign_hard"], vq_l["assign_soft"],
+                        batch["pair_mask"].to(device), args.pair_budget)
+                    loss = loss + args.lambda_pair * pair_pen
+
             optim.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(
@@ -652,6 +692,9 @@ def main():
             log_buf["avg_len"] += avg_len_batch.detach().item()
             log_buf["lagrangian"] += lagrangian_lambda
             log_buf["src_len"] += src_len_avg
+            if pair_ham is not None:
+                log_buf["pair_ham"] += pair_ham.item()
+                log_buf["n_pair"] += 1
             log_buf["n"] += 1
 
             step += 1
@@ -692,7 +735,9 @@ def main():
                     f"bits/srctok={bits_per_src_token:.2f}  "
                     f"lr={sched.get_last_lr()[0]:.2e}  "
                     f"({steps_per_s:.1f} steps/s)"
-                    f"{mem_str}")
+                    + (f"  pair_ham={log_buf['pair_ham']/log_buf['n_pair']:.2f}"
+                       f"({int(log_buf['n_pair'])})" if log_buf["n_pair"] else "")
+                    + f"{mem_str}")
                 log_buf = {k: 0.0 for k in log_buf}; log_buf["n"] = 0
 
             if step % args.eval_every == 0:

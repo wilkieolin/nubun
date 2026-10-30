@@ -255,6 +255,68 @@ class PivotDataset(IterableDataset):
             }
 
 
+class MinPairsDataset(IterableDataset):
+    """Streaming minimal pairs (PHASE9 §8 branch 2) from augment/minpairs.py
+    package shards: the opus100 layout plus pair_id/factor/member, the two
+    members of a pair in consecutive rows. Yields the members back to back with
+    the same direction, so a DataLoader with an even batch_size and
+    make_pair_collate gives batches of B/2 pairs at rows (2i, 2i+1)."""
+
+    def __init__(self, root_dir: str, short_codes: list[str], seed: int = 42):
+        self.seed = seed
+        self.lang_to_idx = {c: i for i, c in enumerate(short_codes)}
+        self.en_idx = self.lang_to_idx["en"]
+        self.shards = []                       # (lang, path, first-member rows)
+        for path in sorted(glob.glob(os.path.join(root_dir, "*_en.npz"))):
+            with np.load(path, allow_pickle=False) as d:
+                lang = str(d["lang_code"])
+                pid, mem = np.asarray(d["pair_id"]), np.asarray(d["member"])
+            starts = np.flatnonzero((mem[:-1] == 0) & (mem[1:] == 1) & (pid[:-1] == pid[1:]))
+            if lang in self.lang_to_idx and len(starts):
+                self.shards.append((lang, path, starts))
+        if not self.shards:
+            raise FileNotFoundError(f"no minimal-pair shards in {root_dir}")
+        self.n_pairs = sum(len(s) for _, _, s in self.shards)
+        self._mmaps: dict[str, dict] = {}
+
+    def __iter__(self):
+        try:
+            import torch.distributed as dist
+            rank = dist.get_rank() if dist.is_available() and dist.is_initialized() else 0
+        except RuntimeError:
+            rank = 0
+        rng = np.random.default_rng(self.seed + rank * 100000 + 555)
+        while True:
+            lang, path, starts = self.shards[int(rng.integers(0, len(self.shards)))]
+            if path not in self._mmaps:
+                self._mmaps[path] = dict(np.load(path, mmap_mode="r", allow_pickle=False))
+            d = self._mmaps[path]
+            row = int(starts[rng.integers(0, len(starts))])
+            swap = rng.random() < 0.5
+            so, to = d["src_offsets"], d["tgt_offsets"]
+            for r in (row, row + 1):
+                x_ids = np.array(d["src_tokens"][so[r]:so[r + 1]])
+                en_ids = np.array(d["tgt_tokens"][to[r]:to[r + 1]])
+                if not swap:
+                    yield {"src_ids": x_ids, "tgt_ids": en_ids,
+                           "src_lang_id": self.lang_to_idx[lang], "tgt_lang_id": self.en_idx}
+                else:
+                    yield {"src_ids": en_ids, "tgt_ids": x_ids,
+                           "src_lang_id": self.en_idx, "tgt_lang_id": self.lang_to_idx[lang]}
+
+
+def make_pair_collate(pad_token_id: int):
+    """make_streaming_collate plus pair_mask (B/2,) of ones: every row pair is a minimal pair."""
+    base = make_streaming_collate(pad_token_id)
+
+    def collate(batch: list[dict]) -> dict:
+        assert len(batch) % 2 == 0, "minimal-pair batches need an even batch size"
+        out = base(batch)
+        out["pair_mask"] = torch.ones(len(batch) // 2)
+        return out
+    return collate
+
+
 def make_streaming_collate(pad_token_id: int):
     """Collate fn for items yielded by Opus100Dataset (each item already has
     src/tgt picked, so we just pad+stack)."""

@@ -33,6 +33,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 from vqvae.model import VQVAE  # noqa: E402
+from vqvae.pairs import pair_hamming_loss  # noqa: E402
 
 import cerebras.pytorch as cstorch  # noqa: E402
 from cerebras.cs_common import add_cluster_args, make_backend  # noqa: E402
@@ -141,6 +142,10 @@ def make_synthetic_input_fn(args, vocab):
                     b["token_weight_t"] = torch.rand(B, T - 1, dtype=torch.float32) + 0.5
                 if not args.no_semantic:
                     b["sem_target"] = torch.randn(B, d_sem)
+                if args.lambda_pair > 0:     # penalty graph: dry-compilable too
+                    pm = torch.zeros(B // 2, dtype=torch.float32)
+                    pm[:max(1, args.pairs_per_batch)] = 1.0
+                    b["pair_mask"] = pm
                 yield b
         return gen()
     return input_fn
@@ -163,7 +168,9 @@ def build_input_fn(args, vocab, token_weight=None):
         seed=args.seed + getattr(args, "start_step", 0),
         langs=langs, with_semantic=not args.no_semantic,
         sem_dir=args.sem_dir, pad=args.pad_token_id, token_weight=token_weight,
-        max_len=args.seq_len if args.fit_seq_len else None)
+        max_len=args.seq_len if args.fit_seq_len else None,
+        minpairs_dir=args.minpairs_dir, pairs_per_batch=args.pairs_per_batch,
+        with_pair_mask=args.lambda_pair > 0)
 
 
 def main():
@@ -181,6 +188,21 @@ def main():
                          "--opus-dir. Build with precompute_opus_semantic.py.")
     ap.add_argument("--langs", default=None,
                     help="Comma-separated X-lang subset (default: all shards).")
+    # Phase 9 branch 2: minimal pairs (augment/minpairs.py package shards, with
+    # <lang>_en.sem.npz from precompute_opus_semantic.py for M2). Mixing alone
+    # (--lambda-pair 0) leaves the graph unchanged; the penalty is a new compile.
+    ap.add_argument("--minpairs-dir", default=None,
+                    help="minimal-pair shards (<lang>_en/ or <lang>_en.npz + .sem)")
+    ap.add_argument("--pairs-per-batch", type=int, default=0,
+                    help="minimal pairs in the first 2P rows of every batch")
+    ap.add_argument("--lambda-pair", type=float, default=0.0,
+                    help="weight of the pair Hamming penalty (vqvae/pairs.py); 0 = off")
+    ap.add_argument("--pair-budget", type=float, default=2.0,
+                    help="slots a pair's code stacks may differ in for free")
+    ap.add_argument("--pair-tau", type=float, default=0.1,
+                    help="softmax temperature of the penalty's soft assignments")
+    ap.add_argument("--pair-levels", type=int, default=1,
+                    help="RVQ levels (from 0) the pair Hamming counts; 1 = level 0")
     ap.add_argument("--synthetic-data", action="store_true",
                     help="Use random batches instead of real opus — for a "
                          "no-data dry compile (pair with --compile-only).")
@@ -302,6 +324,11 @@ def main():
         cstorch.backends.csx.debug.ini.ws_opt_force_min_grad_accum_batch = args.min_micro_batch
 
     model = build_model(args, emb)
+    if args.lambda_pair > 0:
+        if not (args.minpairs_dir and args.pairs_per_batch > 0) and not args.synthetic_data:
+            raise SystemExit("--lambda-pair needs --minpairs-dir and --pairs-per-batch")
+        model.quantizer.pair_tau = args.pair_tau
+        model.quantizer.pair_levels = args.pair_levels
     if args.train_embeddings:
         # Tied: encoder.token_emb.weight IS decoder.token_emb.weight.
         model.decoder.token_emb.weight.requires_grad = True
@@ -374,6 +401,13 @@ def main():
         if not args.no_semantic and out["sem_pred"] is not None:
             cos = cosine_sim(out["sem_pred"].float(), batch["sem_target"].float())
             loss = loss + args.lambda_sem * (1.0 - cos).mean()
+        if args.lambda_pair > 0:
+            pen, ham = pair_hamming_loss(out["vq_losses"]["assign_hard"],
+                                         out["vq_losses"]["assign_soft"],
+                                         batch["pair_mask"], args.pair_budget)
+            loss = loss + args.lambda_pair * pen
+        else:
+            ham = None
         # Same sequence as modelzoo MixedPrecision: [scale] -> backward ->
         # [unscale] -> clip_grad_norm_ -> step -> [update] -> zero_grad -> sched.
         if grad_scaler is None:
@@ -390,10 +424,12 @@ def main():
             grad_scaler.update()
         optimizer.zero_grad()
         lr_scheduler.step()
+        if ham is not None:
+            return loss, recon, ham
         return loss, recon
 
     @cstorch.step_closure
-    def log_step(step, loss, recon):
+    def log_step(step, loss, recon, ham=None):
         # Fetch the returned tensors EVERY step. Fetching a graph output is what
         # anchors the traced step: cstorch dead-code-eliminates a step with no
         # requested outputs down to an empty graph ("Cannot compile empty CIRH
@@ -402,8 +438,10 @@ def main():
         # (Host-side reads are legal ONLY inside a step_closure.)
         loss_v = loss.item()
         recon_v = recon.item()
+        ham_v = ham.item() if ham is not None else None
         if step % args.log_every == 0:
-            print(f"step {step:>7}  loss={loss_v:.4f}  recon={recon_v:.4f}")
+            extra = f"  pair_hamming={ham_v:.2f}" if ham_v is not None else ""
+            print(f"step {step:>7}  loss={loss_v:.4f}  recon={recon_v:.4f}{extra}")
 
     @cstorch.checkpoint_closure
     def save_ckpt(step):
@@ -433,8 +471,7 @@ def main():
           f"semantic={not args.no_semantic} compile_only={args.compile_only} "
           f"validate_only={args.validate_only} artifact_dir={args.artifact_dir}")
     for step, batch in enumerate(executor, start=args.start_step + 1):
-        loss, recon = train_step(batch)
-        log_step(step, loss, recon)
+        log_step(step, *train_step(batch))
         save_ckpt(step)
     print("Done.")
 
