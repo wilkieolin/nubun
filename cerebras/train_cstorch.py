@@ -33,7 +33,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 from vqvae.model import VQVAE  # noqa: E402
-from vqvae.pairs import pair_hamming_loss  # noqa: E402
+from vqvae.pairs import pair_hamming_loss_sel  # noqa: E402
 
 import cerebras.pytorch as cstorch  # noqa: E402
 from cerebras.cs_common import add_cluster_args, make_backend  # noqa: E402
@@ -143,9 +143,10 @@ def make_synthetic_input_fn(args, vocab):
                 if not args.no_semantic:
                     b["sem_target"] = torch.randn(B, d_sem)
                 if args.lambda_pair > 0:     # penalty graph: dry-compilable too
-                    pm = torch.zeros(B, dtype=torch.float32)
-                    pm[:2 * max(1, args.pairs_per_batch)] = 1.0
-                    b["pair_mask"] = pm
+                    P = max(1, args.pairs_per_batch)
+                    ps = torch.zeros(B, P, dtype=torch.float32)
+                    ps[torch.arange(2 * P), torch.arange(2 * P) // 2] = 1.0
+                    b["pair_sel"] = ps
                 yield b
         return gen()
     return input_fn
@@ -170,7 +171,7 @@ def build_input_fn(args, vocab, token_weight=None):
         sem_dir=args.sem_dir, pad=args.pad_token_id, token_weight=token_weight,
         max_len=args.seq_len if args.fit_seq_len else None,
         minpairs_dir=args.minpairs_dir, pairs_per_batch=args.pairs_per_batch,
-        with_pair_mask=args.lambda_pair > 0)
+        with_pair_sel=args.lambda_pair > 0)
 
 
 def main():
@@ -402,9 +403,9 @@ def main():
             cos = cosine_sim(out["sem_pred"].float(), batch["sem_target"].float())
             loss = loss + args.lambda_sem * (1.0 - cos).mean()
         if args.lambda_pair > 0:
-            pen, ham = pair_hamming_loss(out["vq_losses"]["assign_hard"],
-                                         out["vq_losses"]["assign_soft"],
-                                         batch["pair_mask"], args.pair_budget)
+            pen, ham = pair_hamming_loss_sel(out["vq_losses"]["assign_hard"],
+                                             out["vq_losses"]["assign_soft"],
+                                             batch["pair_sel"], args.pair_budget)
             loss = loss + args.lambda_pair * pen
         else:
             ham = None

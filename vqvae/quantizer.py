@@ -282,7 +282,10 @@ class ResidualVectorQuantizer(nn.Module):
             onehot = (dist == dmin).to(flat.dtype)                    # (N, k)
             onehot = onehot / onehot.sum(dim=1, keepdim=True).clamp(min=1.0)
             if self.pair_tau is not None and level < self.pair_levels:
-                gap = dist - dmin                                     # >= 0, 0 at the code
+                # dmin detached: a per-row shift, so softmax's gradient through
+                # it is 0 anyway, and amin's backward sums a bool tie mask, which
+                # the CS-3 reduce rejects ("ReduceOp supports only f16/f32...").
+                gap = dist - dmin.detach()                            # >= 0, 0 at the code
                 scale = gap.mean(dim=1, keepdim=True).detach().clamp(min=1e-6)
                 hards.append(onehot)
                 softs.append(F.softmax(-gap / (self.pair_tau * scale), dim=1))

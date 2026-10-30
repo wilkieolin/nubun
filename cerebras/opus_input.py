@@ -21,8 +21,9 @@ Minimal pairs (PHASE9 §8 branch 2): with minpairs_dir and pairs_per_batch=P,
 the first 2P rows of every batch are P minimal pairs from augment/minpairs.py
 package shards (same layout plus pair_id/factor/member, members in consecutive
 rows), each pair at rows (2i, 2i+1) with the same language and direction; the
-other B-2P rows are opus as before. with_pair_mask adds `pair_mask` (B,)
-float, 1 on the first 2P rows (per row: CS runs need batch-major tensors), for the Hamming penalty (vqvae/pairs.py).
+other B-2P rows are opus as before. with_pair_sel adds `pair_sel` (B, P)
+float, 1 at (2i, i) and (2i+1, i) (batch-major, as CS runs need), for the
+Hamming penalty (vqvae/pairs.py pair_hamming_loss_sel).
 Pairs whose members do not both fit seq_len are never drawn, so truncation
 cannot cut the changed word.
 
@@ -158,7 +159,7 @@ def make_opus_input_fn(opus_dir, seq_len, batch_size, num_steps,
                        seed=42, langs=None, with_semantic=False,
                        sem_dir=None, d_sem=384, pad=None, token_weight=None,
                        max_len=None, minpairs_dir=None, pairs_per_batch=0,
-                       with_pair_mask=False):
+                       with_pair_sel=False):
     """Build the cstorch input_fn. `num_steps` batches are produced (plus a small
     buffer). When with_semantic, `<lang>_en.sem.npz` (from precompute_opus_semantic.py)
     must sit in sem_dir (defaults to opus_dir) and carry src_sem/tgt_sem.
@@ -212,8 +213,8 @@ def make_opus_input_fn(opus_dir, seq_len, batch_size, num_steps,
             raise ValueError(f"no minimal pairs fit seq_len={seq_len} in {minpairs_dir}")
         print(f"minpairs: {P} pairs per batch of {batch_size} from "
               f"{[(m[0], len(pair_starts[m[2]])) for m in mp_meta]} (pairs fitting seq_len)")
-    elif with_pair_mask:
-        raise ValueError("with_pair_mask needs minpairs_dir and pairs_per_batch > 0")
+    elif with_pair_sel:
+        raise ValueError("with_pair_sel needs minpairs_dir and pairs_per_batch > 0")
 
     # Lazy per-shard caches (mmap'd views; built inside the worker process).
     tok_cache, sem_cache = {}, {}
@@ -315,10 +316,10 @@ def make_opus_input_fn(opus_dir, seq_len, batch_size, num_steps,
                     batch["token_weight_t"] = torch.from_numpy(np.ascontiguousarray(tw))
                 if with_semantic:
                     batch["sem_target"] = torch.from_numpy(sem)
-                if with_pair_mask:
-                    pm = np.zeros(B, dtype=np.float32)
-                    pm[:2 * P] = 1.0
-                    batch["pair_mask"] = torch.from_numpy(pm)
+                if with_pair_sel:
+                    ps = np.zeros((B, P), dtype=np.float32)
+                    ps[np.arange(2 * P), np.arange(2 * P) // 2] = 1.0
+                    batch["pair_sel"] = torch.from_numpy(ps)
                 yield batch
 
         return gen()

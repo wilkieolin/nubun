@@ -10,7 +10,8 @@ Last updated 2026-10-30, at commit `dbe05ee` or later.
 - **Code (all pushed, untested on the wafer):**
   - `cerebras/opus_input.py`: `--minpairs-dir`, `--pairs-per-batch P`. Rows
     (2i, 2i+1) for i < P are a minimal pair, with the same language and
-    direction. `pair_mask` is per row, shape (B,).
+    direction. `pair_sel` (B, P) maps each row to its pair, one-hot; unpaired
+    rows are all 0.
   - `vqvae/pairs.py`: the level-0 slot-Hamming penalty
     `relu(ham - budget)`. The value is exact; the gradient comes from softmax
     assignments. It uses only sums and reshapes.
@@ -30,9 +31,22 @@ Last updated 2026-10-30, at commit `dbe05ee` or later.
 - **Fixed on the way here:**
   - the minpairs scan now reads unpacked directories;
   - `pair_mask` is now (B,), because CS runs reject tensors whose leading
-    dimension is not B.
-  - The first compile attempt never reached the graph compiler, so whether
-    the penalty compiles is still unknown.
+    dimension is not B; then replaced by `pair_sel` (B, P), below.
+  - The penalty graph compiles as of 2026-10-30 (`logs/m2-20261030T220352Z.log`,
+    about 40 min). Three compiler failures on the way, all in `vqvae/pairs.py`
+    or the soft-assignment path:
+    1. the reshape `(L, B, M, k) -> (L, B/2, 2, M, k)`: "failed to propagate
+       named dimension"; the batch axis cannot be split. Pairs are now
+       batch reductions weighted by `pair_sel` (`pair_hamming_loss_sel`);
+    2. `F.relu` and compares on per-pair (P,) tensors: "Unable to insert transfer
+       from WGT_HOST to WSE"; non-batch tensors land on GlobalHost. The pair
+       sum is scattered back to rows, so everything after it is per row;
+    3. backward of `amin` (via `gap = dist - dmin` in `quantizer.py`): "ReduceOp
+       supports only f16/f32..." on a bool tie mask. `dmin` is detached, which
+       is exact (a per-row shift under softmax).
+    The pair term disables gradient accumulation ("will NOT be applied"): the
+    penalty run takes B=128 in one pass, so its step time may differ from the
+    baseline's. The `mix` graph is unchanged.
 
 ## Loop
 
@@ -131,12 +145,12 @@ import sys, numpy as np; sys.path.insert(0, "cerebras")
 from opus_input import make_opus_input_fn
 fn = make_opus_input_fn("data/opus100_npy", 64, 128, 2, seed=1, with_semantic=True, pad=1,
      sem_dir="data/opus100_npy", parallel_corpus="data/parallel_corpus.npz",
-     minpairs_dir="data/minpairs_npy", pairs_per_batch=8, with_pair_mask=True)
+     minpairs_dir="data/minpairs_npy", pairs_per_batch=8, with_pair_sel=True)
 b = next(iter(fn()))
 print({k: tuple(v.shape) for k, v in b.items()})   # every leading dim must be 128
 ```
 
-`train_cstorch.py --synthetic-data` batches also include `pair_mask` when
+`train_cstorch.py --synthetic-data` batches also include `pair_sel` when
 `--lambda-pair > 0`. `bash cerebras/submit_alcf.sh smoke-m2 --lambda-pair 1.0
 --pairs-per-batch 8 --compile-only` therefore compiles the penalty graph with
 no real data, which helps separate a graph problem from a data problem.
