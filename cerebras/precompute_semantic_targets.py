@@ -42,17 +42,25 @@ def embed_token_ids(model, ids, pad_token_id, device, batch_size=256, fp16=True,
     n = ids.shape[0]
     out = np.empty((n, model.config.hidden_size),
                    dtype=np.float16 if fp16 else np.float32)
+    # Length-sorted batches trimmed to their own longest row: padding is masked
+    # out of attention and pooling, so this matches full-width batches (to fp
+    # noise) and skips most of the padded compute.
+    lens = (ids != pad_token_id).sum(1)
+    order = np.argsort(lens, kind="stable")
     starts = range(0, n, batch_size)
     if tqdm is not None and desc is not None:
         starts = tqdm(starts, desc=desc, total=(n + batch_size - 1) // batch_size,
                       unit="batch", leave=False)
-    for i in starts:
-        chunk = torch.as_tensor(ids[i:i + batch_size], dtype=torch.long, device=device)
-        attn = (chunk != pad_token_id).long()
-        h = model(input_ids=chunk, attention_mask=attn).last_hidden_state
-        mask = attn.unsqueeze(-1).to(h.dtype)
-        pooled = (h * mask).sum(1) / mask.sum(1).clamp(min=1.0)
-        out[i:i + batch_size] = pooled.cpu().numpy()
+    with torch.inference_mode():
+        for i in starts:
+            rows = order[i:i + batch_size]
+            t = max(int(lens[rows].max()), 1)
+            chunk = torch.as_tensor(ids[rows, :t], dtype=torch.long, device=device)
+            attn = (chunk != pad_token_id).long()
+            h = model(input_ids=chunk, attention_mask=attn).last_hidden_state
+            mask = attn.unsqueeze(-1).to(h.dtype)
+            pooled = (h * mask).sum(1) / mask.sum(1).clamp(min=1.0)
+            out[rows] = pooled.cpu().numpy()
     return out
 
 
