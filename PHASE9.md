@@ -1008,6 +1008,40 @@ medium run under way.** Spec and results in `augment/README.md` §9-10.
     tail and leaves level-0 diversification alone. Whether it shapes the
     converged code (500k: negation median 44) needs a longer run or a
     fine-tune from the long run.
+- **Wafer runs (2026-10-31): mix done, penalty blocked.**
+  - **mix** (`minpairs-mix-seed1-20261030T224344Z`, 50k, 8 pairs per batch,
+    no new loss), against `seed1-b128` at 50k:
+
+    | | seed 1 | mix |
+    |---|---|---|
+    | train-log recon at 50k (batches differ: mix has 16 pair rows) | 4.21 | 3.86 |
+    | round-trip cross / same (`roundtrip_eval.py`, A2 protocol) | 0.413 / 0.426 | 0.411 / 0.417 |
+    | distinct level-0 codes per sentence / full stacks | 2.3 / 11.2 | 2.7 / 13.0 |
+    | negation pairs, L0: mean / median / =0 / <=2 | 30.2 / 13 / 27% / 43% | 9.8 / 1 / 47% / 68% |
+    | tense pairs, L0: mean / median / =0 / <=2 | 12.5 / 1 / 46% / 66% | 10.9 / 1 / 44% / 67% |
+    | random pairs, L0 median | 64 | 64 |
+
+    - The mix alone pulls seed 1's negation pairs together (43% to 68% within 2
+      slots, about seed 2's 50k baseline of 69%). Tense pairs do not move.
+      Level-0 diversification is not held back (2.7 against 2.3).
+    - Caveats:
+      - the readout uses the training pairs: no held-out split exists, and
+        each pair was drawn about 12 times;
+      - seed 1's negation baseline is far worse than seed 2's, so part of
+        the gain may be seed variance.
+    - `codebook_stability.py`, seed 1 against mix, level 0: slot agreement
+      0.396 (chance 0.141) and recurrence 0.138, about the cross-seed values
+      (A4: 0.422, 0.092). The data change alone reshuffles level 0 as much
+      as a new seed does.
+  - **penalty:** it does not run on the wafer yet. Every form fails:
+    - the pairing as a reshape of the batch axis, or as a matmul over it,
+      does not compile;
+    - a weighted batch sum and a detached partner-encoder pass both compile,
+      then both abort the weight host at iteration 0 with a null waxpy
+      buffer.
+
+    The cause is common to both, still to bisect
+    (`cerebras/HANDOFF_MINPAIRS.md`).
 - **Open: the substitution test (C2), the readout, is not written yet.**
 
 **Readout for both: the substitution test (C2).** Swap a stable radical in or
