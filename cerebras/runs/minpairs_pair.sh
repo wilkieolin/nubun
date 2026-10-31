@@ -31,7 +31,11 @@ STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 COMMON=(--batch-size 128 --lr 6e-4 --steps "$STEPS" --warmup-steps 500
         --ckpt-every 10000 --keep-ckpts 1 --log-every 1000 --seed "$SEED"
         --minpairs-dir "$MINPAIRS" --pairs-per-batch "$PAIRS")
-PEN=(--lambda-pair "$LAMBDA" --pair-budget "$BUDGET" --pair-levels 1)
+# --micro-batch-size 128: with the penalty's partner pass (partner_src_ids) every
+# micro-batch 32/64 floorplan aborts the compile ("Memory allocation was
+# unsuccessful ... at the top level", also with --min-micro-batch 64); the full
+# batch has no accumulation and the same gradient.
+PEN=(--lambda-pair "$LAMBDA" --pair-budget "$BUDGET" --pair-levels 1 --micro-batch-size 128)
 [[ -d "$MINPAIRS" ]] || { echo "ERROR: $MINPAIRS missing (see header)" >&2; exit 2; }
 mkdir -p logs
 if [[ "${1:-}" == compile ]]; then

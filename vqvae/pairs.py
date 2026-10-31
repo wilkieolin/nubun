@@ -21,10 +21,10 @@ compiler accepts in the quantiser already.
 
 Two forms of the pairing: pair_hamming_loss reshapes the batch axis to
 (B/2, 2), for GPU batches where every row pair is a minimal pair.
-pair_hamming_loss_sel takes a (B, P) one-hot row-to-pair map and sums over the
-batch with it, keeping the result per row: the CS-3 compiler rejects splitting
-the batch axis ("failed to propagate named dimension" on the (L, B, M, k) ->
-(L, B/2, 2, M, k) reshape).
+pair_hamming_loss_partner compares each row with its partner encoded in a second
+pass, for CS-3 runs, where no op may mix rows across the batch: splitting the
+batch axis, a weighted batch sum and a matmul over the batch all fail
+(HANDOFF_MINPAIRS.md).
 """
 import torch
 from torch.nn import functional as F
@@ -38,38 +38,27 @@ def _agreement(assign):
     return ((x.sum(dim=2) ** 2) - (x ** 2).sum(dim=2)).sum(dim=-1) * 0.5
 
 
-def _agreement_sel(assign, sel):
-    """(L, B, M, k), sel (B, P) -> (L, B, M): each row's agreement with its pair
-    partner, batch-major. The pair sum (L, P, M, k) is a batch reduction weighted
-    by sel, scattered back to the rows by sel; partner = pair sum - own row.
-    Rows outside a pair get garbage, masked by the caller. Everything after the
-    pair sum stays batch-major: compares on non-batch tensors land on GlobalHost
-    ("Unable to insert transfer from WGT_HOST to WSE" on the relu)."""
-    w = sel[None, :, :, None, None]                        # (1, B, P, 1, 1)
-    pair_sum = (w * assign.unsqueeze(2)).sum(dim=1)        # (L, P, M, k)
-    row_sum = (w * pair_sum.unsqueeze(1)).sum(dim=2)       # (L, B, M, k)
-    return (assign * (row_sum - assign)).sum(dim=-1)
-
-
-def _penalty(same_hard, same_soft, mask, budget):
+def _penalty(same_hard, same_soft, mask, budget, grad_scale=1.0):
     """same_*: (L, N, M) code agreement for N pairs (or rows); mask: (N,) float."""
     level_diffs = (1.0 - same_hard).sum(dim=0)             # (N, M)
     ham = (level_diffs > 0.5).float().sum(dim=-1)          # (N,) slots with any level differing
     surrogate = (1.0 - same_soft).mean(dim=0).sum(dim=-1)  # (N,)
-    ham_st = ham + surrogate - surrogate.detach()
+    ham_st = ham + grad_scale * (surrogate - surrogate.detach())
     n = mask.sum().clamp(min=1.0)
     penalty = (F.relu(ham_st - budget) * mask).sum() / n
     return penalty, (ham * mask).sum() / n
 
 
-def pair_hamming_loss_sel(hard, soft, pair_sel, budget):
-    """hard, soft: (L, B, M, k) as below; pair_sel: (B, P) float, 1 at
-    (2i, i) and (2i+1, i) for pair i, rows outside a pair all 0 (CS runs: batch-major).
-    Per row against its partner, so each pair counts twice: same mean, same gradient."""
-    sel = pair_sel.float()
-    mask = sel.sum(dim=1)                                  # (B,), 1 on paired rows
-    return _penalty(_agreement_sel(hard.float(), sel),
-                    _agreement_sel(soft.float(), sel), mask, budget)
+def pair_hamming_loss_partner(hard, soft, hard_p, soft_p, pair_mask, budget):
+    """hard, soft: (L, B, M, k) for the batch; hard_p, soft_p: the same for each
+    row's partner, from a detached second pass over partner_src_ids; pair_mask:
+    (B,) float, 1 on paired rows. Per row, so each pair counts twice: the same
+    mean as pair_hamming_loss. With the partner detached, each row's surrogate
+    gives half the pair gradient (d(a.b')/da = b over 2n rows, against b over n
+    pairs), so grad_scale=2 makes it exact."""
+    same_hard = (hard.float() * hard_p.float().detach()).sum(dim=-1)   # (L, B, M)
+    same_soft = (soft.float() * soft_p.float().detach()).sum(dim=-1)
+    return _penalty(same_hard, same_soft, pair_mask.float(), budget, grad_scale=2.0)
 
 
 def pair_hamming_loss(hard, soft, pair_mask, budget):

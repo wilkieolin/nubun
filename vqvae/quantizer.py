@@ -310,6 +310,32 @@ class ResidualVectorQuantizer(nn.Module):
             losses["assign_soft"] = torch.stack(softs).view(len(softs), B, M, self.k)
         return z_q_flat.view(B, M, D), idx0.view(B, M), losses, usage
 
+    def assign(self, z_e: torch.Tensor) -> dict:
+        """The assign_hard / assign_soft that forward returns with pair_tau set,
+        for levels 0..pair_levels-1 only: no z_q, no losses. For the minimal-pair
+        partner pass (vqvae/pairs.py), which only needs the assignments. The
+        same per-level selection as forward (float one-hot, no argmin/int64)."""
+        B, M, D = z_e.shape
+        residual = z_e.reshape(-1, D)
+        hards, softs = [], []
+        for level, cb in enumerate(self.codebooks):
+            if level >= self.pair_levels:
+                break
+            r_sq = (residual ** 2).sum(dim=1, keepdim=True)
+            e_sq = (cb ** 2).sum(dim=1).unsqueeze(0)
+            dist = r_sq + e_sq - 2 * F.linear(residual, cb)
+            dmin = dist.amin(dim=1, keepdim=True)
+            onehot = (dist == dmin).to(residual.dtype)
+            onehot = onehot / onehot.sum(dim=1, keepdim=True).clamp(min=1.0)
+            gap = dist - dmin.detach()
+            scale = gap.mean(dim=1, keepdim=True).detach().clamp(min=1e-6)
+            hards.append(onehot)
+            softs.append(F.softmax(-gap / (self.pair_tau * scale), dim=1))
+            if level + 1 < self.pair_levels:
+                residual = residual - (onehot @ cb).detach()
+        return {"assign_hard": torch.stack(hards).view(len(hards), B, M, self.k),
+                "assign_soft": torch.stack(softs).view(len(softs), B, M, self.k)}
+
     # --- compatibility shims (operate on level-0 indices; unused w/o stop-mask) ---
     def get_stop_mask(self, indices: torch.Tensor) -> torch.Tensor:
         is_stop = indices == self.stop_index

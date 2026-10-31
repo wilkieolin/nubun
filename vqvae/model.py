@@ -128,6 +128,7 @@ class VQVAE(nn.Module):
         word_dropout: float = 0.0,
         mask_token_id: int = 3,
         pre_shifted: bool = False,
+        partner_src_ids: torch.Tensor | None = None,
     ) -> dict:
         """If target_len is provided (per-example, B-shaped), positions
         >= target_len[i] are forced to <stop> after quantization. Used
@@ -137,7 +138,14 @@ class VQVAE(nn.Module):
         tgt[:-1]), supplied by the data pipeline, so the model does not slice it.
         This is required on the CS-3 — cstorch's slice_filter kernel asserts on
         any in-graph ws_km.slice — where the AR teacher-forcing shift is done on
-        the host and the caller compares logits to a separate labels tensor."""
+        the host and the caller compares logits to a separate labels tensor.
+
+        partner_src_ids (B, T): each row's minimal-pair partner (PHASE9 §8
+        branch 2), encoded and quantized in a second pass; its code assignments
+        come back as out["partner_vq"] for vqvae/pairs.py. Forward only
+        (detached) and only the levels the penalty counts: with a full
+        differentiable second pass the graph does not fit the CS-3
+        ("Memory allocation was unsuccessful"); pairs.py restores the gradient."""
         z_e = self.encoder(src_ids)
         if self.no_vq:
             # Phase 6 B1 upper bound: continuous bottleneck, no quantization, no
@@ -212,7 +220,11 @@ class VQVAE(nn.Module):
                        (dec_in != self.pad_token_id)
                 dec_in = torch.where(drop, torch.full_like(dec_in, mask_token_id), dec_in)
             logits, dec_h = self.decoder(z_q, mem_mask, dec_in, tgt_lang_id)
+        partner_vq = None
+        if partner_src_ids is not None and not self.no_vq:
+            partner_vq = self.quantizer.assign(self.encoder(partner_src_ids).detach())
         return {
+            "partner_vq": partner_vq,
             "logits": logits,
             "dec_h": dec_h,   # (B,T,d_emb) post-out_norm(+out_proj), for the CS-3 lookup CE
             "indices": indices,
