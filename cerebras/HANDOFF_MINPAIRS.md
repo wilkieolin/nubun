@@ -55,10 +55,29 @@ Last updated 2026-10-30, at commit `dbe05ee` or later.
     buffer, buf=5267 iter=0" (`weight-11/dbg_wgt_11.err`). The client reports
     only a gRPC "Connection reset by peer" on WGT #11. Likely cause, not yet
     confirmed: the one non-batch intermediate left, the pair sum (L, P, M, k),
-    which the compiler places on the host. Open: a cross-row op that stays
-    batch-major (a (B, B) pair matrix fed as input, `S @ x` over the batch), or
-    no cross-row op at all (encode each row's partner as a second input,
-    which roughly doubles the encoder cost).
+    which the compiler places on the host. **Not the cause**: the partner form
+    below fails the same way.
+  - Pairing forms tried after that (2026-10-31):
+    1. `S @ x`, a (B, B) swap matrix over the batch: compile error ("inputs
+       with multiple dimensions related to that inferred" batch dimension);
+    2. **partner pass** (current code): the input function adds
+       `partner_src_ids` (B, T) (rows 2i and 2i+1 swapped) and `pair_mask` (B,);
+       `model.forward(partner_src_ids=...)` encodes it detached, with
+       `quantizer.assign()` (levels < pair_levels only), and
+       `pair_hamming_loss_partner` compares row with partner elementwise (value
+       and gradient equal to `pair_hamming_loss`; grad_scale 2 makes up for the
+       detached partner). A differentiable partner pass did not fit
+       ("Memory allocation was unsuccessful ... top level"), with auto
+       micro-batch or `--min-micro-batch 64`. Detached plus
+       `--micro-batch-size 128` compiles (about 40 min), then aborts at
+       iteration 0 with the **same null-buffer assertion**, on WGT #8
+       (wsjob-kektewtz, `logx/wsjob-kektewtzsrzf7yabcwiye6/`).
+  - So the abort comes from something both forms share: the `pair_tau` soft
+    path in the quantizer, the straight-through `ham + s - s.detach()`, or the
+    penalty's gradient reaching the weights (the waxpy update reads a gradient
+    buffer that is never written). Next: bisect with three runs, each with a
+    few steps, by replacing the penalty in turn with (a) `ham` only (no
+    gradient), (b) `surrogate.mean()` only, (c) the full term.
 
 ## Loop
 
