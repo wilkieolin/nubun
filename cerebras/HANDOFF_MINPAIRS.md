@@ -96,13 +96,21 @@ Last updated 2026-10-30, at commit `dbe05ee` or later.
     - Check any fix from a compile-only run: `python3
       cerebras/wgt_update_flags.py <cs dir>/ws_rt.mlir` must show no
       "own flag" line.
-  - **Fix candidate, not applied:** keep the codebook out of the soft path's
-    gradient (`cb.detach()` in the soft distance). The penalty's gradient then
-    reaches only the encoder, through `F.linear(residual, cb)`'s activation
-    side, an ordinary matmul backward, and the codebook's update is exactly as
-    in `mix`. It changes the method: codes no longer move toward the pairs,
-    only the encoder outputs do. An exact alternative would need `||e||^2`
-    computed on the wafer, which no weight-only expression allows.
+  - **Fix applied (2026-11-02, `a797074`): the codebook is detached in the soft
+    distance**, so the penalty's gradient reaches only the encoder.
+    - `cb.detach()` does nothing on the wafer: cstorch's `Parameter.detach()`
+      returns the parameter itself (`cerebras/pytorch/nn/parameter.py:86`).
+      The first compile of that version hit the old graph's cache. Use
+      `cb.view(cb.shape).detach()`.
+    - Compile-only: fresh hash `cs_12945721722237722335`, and
+      `wgt_update_flags.py` shows all 370 updates on the shared flag; no
+      `merge_start` or `broadcast`.
+    - **It runs on the wafer**: `logs/minpairs-penalty-20261102T194027Z.out`,
+      wsjob-d573czv3, about 9.5 min per 1000 steps, so about 8 h for 50k.
+      Early log, penalty / mix: recon 7.32 / 7.09 (1k), 7.35 / 6.83 (2k), 6.85 /
+      6.23 (3k), 6.85 / 6.40 (4k); `pair_hamming` 2.00 at 1k, then 0.00.
+      Exactly 0 may mean level 0 has collapsed; check the 10k checkpoint with
+      `code_usage_audit.py` (distinct level-0 codes per sentence).
 
 ## Loop
 
