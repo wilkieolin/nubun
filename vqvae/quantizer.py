@@ -285,7 +285,15 @@ class ResidualVectorQuantizer(nn.Module):
                 # dmin detached: a per-row shift, so softmax's gradient through
                 # it is 0 anyway, and amin's backward sums a bool tie mask, which
                 # the CS-3 reduce rejects ("ReduceOp supports only f16/f32...").
-                gap = dist - dmin.detach()                            # >= 0, 0 at the code
+                # Codebook detached in the soft distance: the penalty's gradient
+                # reaches the encoder only. Through e_sq = (cb**2).sum the
+                # codebook gradient is elementwise on the weight, computed on
+                # the weight host, and that update aborts the CS-3 run at step 0
+                # (HANDOFF_MINPAIRS.md, "Diagnosis"). Detach a view, not cb:
+                # cstorch's Parameter.detach() returns the parameter itself.
+                cb_d = cb.view(cb.shape).detach()
+                dist_s = r_sq + (cb_d ** 2).sum(dim=1).unsqueeze(0) - 2 * F.linear(residual, cb_d)
+                gap = dist_s - dmin.detach()                          # >= 0, 0 at the code
                 scale = gap.mean(dim=1, keepdim=True).detach().clamp(min=1e-6)
                 hards.append(onehot)
                 softs.append(F.softmax(-gap / (self.pair_tau * scale), dim=1))
@@ -327,7 +335,9 @@ class ResidualVectorQuantizer(nn.Module):
             dmin = dist.amin(dim=1, keepdim=True)
             onehot = (dist == dmin).to(residual.dtype)
             onehot = onehot / onehot.sum(dim=1, keepdim=True).clamp(min=1.0)
-            gap = dist - dmin.detach()
+            cb_d = cb.view(cb.shape).detach()   # as in forward (not cb.detach())
+            dist_s = r_sq + (cb_d ** 2).sum(dim=1).unsqueeze(0) - 2 * F.linear(residual, cb_d)
+            gap = dist_s - dmin.detach()
             scale = gap.mean(dim=1, keepdim=True).detach().clamp(min=1e-6)
             hards.append(onehot)
             softs.append(F.softmax(-gap / (self.pair_tau * scale), dim=1))
