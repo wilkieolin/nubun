@@ -72,12 +72,37 @@ Last updated 2026-10-30, at commit `dbe05ee` or later.
        `--micro-batch-size 128` compiles (about 40 min), then aborts at
        iteration 0 with the **same null-buffer assertion**, on WGT #8
        (wsjob-kektewtz, `logx/wsjob-kektewtzsrzf7yabcwiye6/`).
-  - So the abort comes from something both forms share: the `pair_tau` soft
-    path in the quantizer, the straight-through `ham + s - s.detach()`, or the
-    penalty's gradient reaching the weights (the waxpy update reads a gradient
-    buffer that is never written). Next: bisect with three runs, each with a
-    few steps, by replacing the penalty in turn with (a) `ham` only (no
-    gradient), (b) `surrogate.mean()` only, (c) the full term.
+  - **Diagnosis (2026-11-02, from the compile artifacts; no wafer run).** The
+    abort is in the Adam update of the **level-0 codebook**:
+    - The penalty's soft assignment is a softmax over `dist = r_sq + e_sq -
+      2 F.linear(residual, cb)`. In `mix`, `dist` only feeds the hard compare,
+      so it has no gradient. With the penalty, the codebook gets a gradient
+      through `e_sq = (cb ** 2).sum(dim=1)`: 2 cb times sum_n g_nj.
+    - That term is elementwise on the weight itself, so the compiler computes
+      it on the weight host (`quantizer.bwd/aten::sum` and `expand_copy` become
+      `wgth.broadcast` and `wgth.merge_start`, which are 0 in `mix`) and merges
+      it with the gradient pieces streamed from the wafer.
+    - The merged update gets its own i1 update flag. In `mix`, all 370
+      parameters share one flag per branch; in both failing programs, exactly
+      one parameter does not, the one whose gradient is attributed to
+      `quantizer.fwd/aten::pow`.
+    - That flag is written only by a conditional copy and is still unset at
+      iteration 0: "Null initializing dense data buffer ... buffer_id:5241"
+      (WGT #8) and 5267 (WGT #11) are those flags, read by `wgth.adam`.
+    - So it is a weight-host compiler/runtime defect, triggered by a
+      host-computed gradient term on a streamed weight. Not a shape rule, and
+      not the pairing. The client is 1.14.0 and the cluster 1.20.2 (the
+      "InconsistentVersion" warning); whether that matters is unknown.
+    - Check any fix from a compile-only run: `python3
+      cerebras/wgt_update_flags.py <cs dir>/ws_rt.mlir` must show no
+      "own flag" line.
+  - **Fix candidate, not applied:** keep the codebook out of the soft path's
+    gradient (`cb.detach()` in the soft distance). The penalty's gradient then
+    reaches only the encoder, through `F.linear(residual, cb)`'s activation
+    side, an ordinary matmul backward, and the codebook's update is exactly as
+    in `mix`. It changes the method: codes no longer move toward the pairs,
+    only the encoder outputs do. An exact alternative would need `||e||^2`
+    computed on the wafer, which no weight-only expression allows.
 
 ## Loop
 
