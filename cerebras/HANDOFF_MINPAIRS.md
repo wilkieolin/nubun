@@ -111,6 +111,30 @@ Last updated 2026-10-30, at commit `dbe05ee` or later.
       6.23 (3k), 6.85 / 6.40 (4k); `pair_hamming` 2.00 at 1k, then 0.00.
       Exactly 0 may mean level 0 has collapsed; check the 10k checkpoint with
       `code_usage_audit.py` (distinct level-0 codes per sentence).
+    - **Level 0 has collapsed (20k checkpoint, 2026-11-02).** On 7.6k de
+      sentences padded to 64, one code takes 100% of level-0 slots (3 of 128
+      ever used, 9 distinct level-0 rows); seed 1 and mix use 118 and 121
+      codes, perplexity 68 and 77. Pair Hamming is 0.1 for minimal pairs and
+      for random pairs alike. The penalty is met by making every sentence
+      identical at level 0; recon (4.98 at 20k, mix 4.61) is carried by
+      levels 1 and up. Nothing in the loss stops it: the codebook is detached
+      from the penalty, but the encoder can move all of z_e onto one code.
+- **Offline readouts and padding (audit, 2026-11-02).** The encoder is not
+  pad-invariant: the readout query adds `h.mean(dim=1)`, which averages over
+  pad positions (`vqvae/encoder.py`). Training pads every row to 64. The
+  readout scripts padded to the batch maximum, which changes 78-88% of rows'
+  level-0 codes for the same ids, and pairs in different batches got
+  different padding.
+  - `scripts/pair_hamming.py` now pads to 64 by default (`--pad-to`, 0 = old
+    behaviour) and keeps only pairs that fit, as training does. Pad 0
+    reproduces the old mix numbers exactly (negation 9.8 / 1 / 47% / 68%).
+  - `code_usage_audit.py`, `roundtrip_eval.py` and `codebook_stability.py`
+    still pad to batch max. Every level-0 number in PHASE9 that came from
+    them, on any model, used a format the model never trained on.
+  - The in-training `pair_hamming` is exact (it equals the integer slot
+    count in eval mode). In train mode dropout makes it noisy, and the
+    partner pass has its own dropout mask (about +0.4 slots).
+    `train_cstorch.py` now logs the mean over each logging window.
 
 ## Loop
 

@@ -9,6 +9,13 @@ a model sits, with or without it.
   python scripts/pair_hamming.py --checkpoint model_dir/<run>/nubun_cs_step50000.eval.pt \\
       --minpairs-dir data/minpairs_medium [--side en] [--depths 1,2,8]
 
+Rows are padded to --pad-to (default 64, the wafer runs' --seq-len), as in
+training: the CS-3 encoder seeds its readout queries with the mean encoder state
+over ALL positions, padding included (vqvae/encoder.py), so codes depend on the
+padded length, and pad-to-batch-max (--pad-to 0, the old behaviour) is a format
+the wafer models never saw. Pairs whose members do not fit are skipped, as in
+the training sampler.
+
 Baseline, converged seed 2 (500k, no pairs in training), pilot pairs, X side,
 level 0: tense median 2 slots (random 62), negation median 47 (bimodal: an
 inserted negator shifts the positional code); all 8 levels: 63 of 64.
@@ -40,6 +47,8 @@ def main():
     p.add_argument("--batch-size", type=int, default=64)
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--pad-to", type=int, default=64,
+                   help="pad every row to this length, as in training; 0 = batch max")
     a = p.parse_args()
 
     ck = vqvae_select.load_checkpoint(a.checkpoint)
@@ -54,13 +63,14 @@ def main():
         out = []
         for s in range(0, len(seqs), a.batch_size):
             ch = seqs[s:s + a.batch_size]
-            bt = torch.full((len(ch), max(map(len, ch))), pad, dtype=torch.long)
+            bt = torch.full((len(ch), a.pad_to or max(map(len, ch))), pad, dtype=torch.long)
             for j, x in enumerate(ch):
                 bt[j, :len(x)] = torch.from_numpy(np.asarray(x))
             out.append(encode_all_levels(model, bt.to(a.device)).cpu().numpy())
         return np.concatenate(out)                  # (N, M, L)
 
     depths = [int(d) for d in a.depths.split(",")]
+    M, L = model.encoder.m_max, len(model.quantizer.codebooks)
     rng = np.random.default_rng(a.seed)
     res = {}
     # packed <lang>_en.npz or unpacked <lang>_en/ (cerebras/unpack_opus.sh)
@@ -72,16 +82,20 @@ def main():
         tok, off = ((d["src_tokens"], d["src_offsets"]) if a.side == "x"
                     else (d["tgt_tokens"], d["tgt_offsets"]))
         mem, fac = d["member"], d["factor"]
-        c = codes([tok[off[i]:off[i + 1]] for i in range(len(mem))])
         first = np.flatnonzero(mem == 0)
+        if a.pad_to:                    # both members, both sides fit (training's filter)
+            n = np.maximum(np.diff(d["src_offsets"]), np.diff(d["tgt_offsets"]))
+            first = first[(n[first] <= a.pad_to) & (n[first + 1] <= a.pad_to)]
+        keep = np.stack([first, first + 1], 1).reshape(-1)
+        c = np.zeros((len(mem), M, L), dtype=np.int64)    # indexed by row; only kept rows filled
+        c[keep] = codes([tok[off[i]:off[i + 1]] for i in keep])
         perm = rng.permutation(first)
         for depth in depths:
             for kind, other in (("pair", first + 1), ("random", perm)):
                 h = (c[first][..., :depth] != c[other][..., :depth]).any(-1).sum(-1)
                 for k, f in enumerate(FACTORS):
                     res.setdefault((depth, f, kind), []).extend(h[fac[first] == k].tolist())
-    M = model.encoder.m_max
-    print(f"{a.checkpoint}  side={a.side}  slots differing (of {M})")
+    print(f"{a.checkpoint}  side={a.side}  pad_to={a.pad_to or 'batch max'}  slots differing (of {M})")
     print(f"{'levels':<8s}{'factor':<10s}{'kind':<8s}{'n':>6s}{'mean':>7s}{'median':>7s}{'p25':>5s}{'=0':>7s}{'<=2':>7s}{'<=4':>7s}")
     for (depth, f, kind), v in sorted(res.items()):
         v = np.array(v)

@@ -1020,6 +1020,18 @@ medium run under way.** Spec and results in `augment/README.md` §9-10.
     | negation pairs, L0: mean / median / =0 / <=2 | 30.2 / 13 / 27% / 43% | 9.8 / 1 / 47% / 68% |
     | tense pairs, L0: mean / median / =0 / <=2 | 12.5 / 1 / 46% / 66% | 10.9 / 1 / 44% / 67% |
     | random pairs, L0 median | 64 | 64 |
+    | **padded to 64, as in training:** negation pairs, L0 | 36.7 / 58 / 18% / 32% | 45.1 / 62 / 7% / 18% |
+    | **padded to 64:** tense pairs, L0 | 19.4 / 2 / 30% / 52% | 13.1 / 1 / 33% / 61% |
+    | **padded to 64:** random pairs, L0 mean | 62.5 | 62.5 |
+
+    - **Correction (2026-11-02): the three pair rows above the bold ones are
+      a padding artifact.** The encoder's readout query averages over pad
+      positions, so codes depend on how far a row is padded. Training pads to
+      64; the readouts padded to the batch maximum. In the training format,
+      the mix makes negation pairs *further apart* (32% to 18% within 2) and
+      tense pairs closer (52% to 61%). The bullets below on negation are
+      withdrawn. The round-trip, code-count and stability rows came from
+      scripts that still pad to batch max and need rerunning.
 
     - The mix alone pulls seed 1's negation pairs together (43% to 68% within 2
       slots, about seed 2's 50k baseline of 69%). Tense pairs do not move.
@@ -1033,7 +1045,11 @@ medium run under way.** Spec and results in `augment/README.md` §9-10.
       0.396 (chance 0.141) and recurrence 0.138, about the cross-seed values
       (A4: 0.422, 0.092). The data change alone reshuffles level 0 as much
       as a new seed does.
-  - **penalty:** it does not run on the wafer yet. Every form fails:
+  - **penalty (2026-11-02):** it runs after the codebook is detached from
+    the soft distance (`a797074`), but level 0 collapses: at 20k one code
+    takes 100% of level-0 slots, so minimal and random pairs both score 0.
+    Recon 4.98 at 20k (mix 4.61). See `cerebras/HANDOFF_MINPAIRS.md`.
+  - **penalty, before the fix:** it did not run on the wafer. Every form failed:
     - the pairing as a reshape of the batch axis, or as a matmul over it,
       does not compile;
     - a weighted batch sum and a detached partner-encoder pass both compile,

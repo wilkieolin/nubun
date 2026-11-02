@@ -434,6 +434,8 @@ def main():
             return loss, recon, ham
         return loss, recon
 
+    ham_acc = []                    # pair_hamming per step since the last log line
+
     @cstorch.step_closure
     def log_step(step, loss, recon, ham=None):
         # Fetch the returned tensors EVERY step. Fetching a graph output is what
@@ -445,8 +447,13 @@ def main():
         loss_v = loss.item()
         recon_v = recon.item()
         ham_v = ham.item() if ham is not None else None
+        if ham_v is not None:       # host-side running mean: one batch is only P pairs
+            ham_acc.append(ham_v)
         if step % args.log_every == 0:
-            extra = f"  pair_hamming={ham_v:.2f}" if ham_v is not None else ""
+            extra = ""
+            if ham_acc:
+                extra = f"  pair_hamming={sum(ham_acc) / len(ham_acc):.2f} (last {ham_v:.2f})"
+                ham_acc.clear()
             print(f"step {step:>7}  loss={loss_v:.4f}  recon={recon_v:.4f}{extra}")
 
     @cstorch.checkpoint_closure
