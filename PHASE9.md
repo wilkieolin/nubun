@@ -371,6 +371,21 @@ higher: the weak-compositionality result is a property of the recipe, not of
 one run, and the extra fidelity of the other seeds did not buy any
 compositional structure.
 
+**Rerun at pad 64 (2026-11-03, `results/phase9_pad64/`).** The table above
+encoded rows padded to the batch maximum; training pads to 64 (§8). Seed 2 at
+batch max reproduces its A6 numbers exactly. At 64, level 0:
+
+| | seed 42 | seed 2 | seed 3 |
+|---|---|---|---|
+| A6 same code in same slot, real / chance / kappa | 0.54 / 0.10 / 0.49 | 0.58 / 0.16 / 0.50 | 0.52 / 0.12 / 0.46 |
+| A6 level-0 bag kappa / depth-2 slot kappa | 0.39 / 0.22 | 0.41 / 0.21 | 0.37 / 0.19 |
+| posdis / bosdis excess | +0.027 / +0.008 | +0.033 / +0.008 | +0.026 / +0.007 |
+| topsim, bag | 0.13 | 0.10 | 0.13 |
+| nPMI stability r (shuffled) | 0.68 (0.60) | 0.66 (0.59) | 0.68 (0.59) |
+
+Every number is within 0.02 of the batch-max one; the interlingua result
+and the weak compositionality both stand.
+
 What this says:
 
 - **The gate (A3) points to keeping ordered RVQ, on a weak signal.** With more
