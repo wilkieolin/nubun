@@ -45,6 +45,28 @@ def build_model(cfg, emb, meta):
         return VQVAE(**kw)
 
 
+def train_pad_len(cfg, pad_to=None):
+    """Row length the checkpoint trained at: CS-3 runs pad or truncate every row to
+    seq_len (64), GPU runs pad to the batch max (0). The encoder is not pad-invariant
+    (its readout query averages over pads), so readouts must match. pad_to overrides."""
+    if pad_to is not None:
+        return pad_to
+    return cfg.get("seq_len", 64) if cfg.get("source") == "cerebras-cs3" else 0
+
+
+def pad_batch(seqs, pad, eos, T=0):
+    """(len(seqs), T) long, T=0 meaning the batch max. Longer rows are cut and end in
+    EOS, as cerebras/opus_input._fix_len does."""
+    T = T or max(len(x) for x in seqs)
+    bt = torch.full((len(seqs), T), pad, dtype=torch.long)
+    for i, x in enumerate(seqs):
+        x = torch.as_tensor(np.asarray(x[:T]), dtype=torch.long)
+        bt[i, :len(x)] = x
+        if len(seqs[i]) > T:
+            bt[i, -1] = eos
+    return bt
+
+
 @torch.no_grad()
 def encode_all_levels(model, src):
     """Greedy RVQ assignment at every level -> (B, M, L) int64 (argmin, no ties)."""
@@ -75,6 +97,8 @@ def main():
     p.add_argument("--max-sents", type=int, default=400)
     p.add_argument("--batch-size", type=int, default=32)
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--pad-to", type=int, default=None,
+                   help="row length; default the training format (64 for CS-3, batch max for GPU); 0 = batch max")
     a = p.parse_args()
 
     ck = vqvae_select.load_checkpoint(a.checkpoint)
@@ -90,6 +114,7 @@ def main():
     q = model.quantizer
     L, K, M = len(q.codebooks), q.k, model.encoder.m_max
     pad = meta.pad_token_id
+    T_pad = train_pad_len(ck["args"], a.pad_to)
     langs = [meta.short_codes.index(c) for c in a.langs.split(",")]
     n = min(val_ids.shape[0], a.max_sents)
 
@@ -97,17 +122,13 @@ def main():
     for l in langs:
         for s in range(0, n, a.batch_size):
             seqs = [val_ids[i, l] for i in range(s, min(s + a.batch_size, n))]
-            T = max(len(x) for x in seqs)
-            bt = torch.full((len(seqs), T), pad, dtype=torch.long)
-            for i, x in enumerate(seqs):
-                bt[i, :len(x)] = torch.as_tensor(x)
-            codes.append(encode_all_levels(model, bt))
-            ntok += [len(x) for x in seqs]
+            codes.append(encode_all_levels(model, pad_batch(seqs, pad, meta.eos_token_id, T_pad)))
+            ntok += [min(len(x), T_pad or len(x)) for x in seqs]
     C = torch.cat(codes).numpy()
     N = C.shape[0]
     ntok = np.array(ntok)
 
-    print(f"Checkpoint: {a.checkpoint} ({ck['step']} steps)")
+    print(f"Checkpoint: {a.checkpoint} ({ck['step']} steps)  pad_to={T_pad or 'batch max'}")
     print(f"{N} encodings ({n} sentences x {len(langs)} langs), mean source tokens {ntok.mean():.1f}")
     print(f"raw bottleneck: {M} slots x {L} levels x log2({K})={math.log2(K):.0f} bits "
           f"= {M * L * math.log2(K):.0f} bits/sentence")

@@ -32,6 +32,7 @@ import torch
 import torch.nn.functional as F
 
 import vqvae_select
+from code_usage_audit import pad_batch, train_pad_len
 vqvae_select.select_from_argv()  # pre-port checkpoints need pre-port vqvae/
 from vqvae.data import combined_split, load_corpus
 from vqvae.model import VQVAE
@@ -155,8 +156,10 @@ def generate_nat(model, z_q, mem_mask, lang_t, src_len, bos, pad, max_len):
 
 @torch.no_grad()
 def roundtrip_condition(model, st_model, val_ids, langs, meta, device,
-                        ratio, slack, cond, max_gen_len, batch_size, depth=None):
-    """Mean round-trip cosine for one condition, split same/cross lang."""
+                        ratio, slack, cond, max_gen_len, batch_size, depth=None, pad_to=0):
+    """Mean round-trip cosine for one condition, split same/cross lang. The model
+    sees rows padded to pad_to (0 = batch max); the reference embedding uses the
+    whole source."""
     pad, bos, eos = meta.pad_token_id, meta.bos_token_id, meta.eos_token_id
     agg = {"same": [0.0, 0], "cross": [0.0, 0]}   # sum_cos, count
     n = val_ids.shape[0]
@@ -168,14 +171,11 @@ def roundtrip_condition(model, st_model, val_ids, langs, meta, device,
                 if end - start < 2:
                     continue
                 src = [val_ids[i, s] for i in range(start, end)]
-                Ts = max(len(x) for x in src)
-                src_t = torch.full((len(src), Ts), pad, dtype=torch.long)
-                for i, x in enumerate(src):
-                    src_t[i, :len(x)] = torch.as_tensor(x)
-                src_t = src_t.to(device)
+                src_t = pad_batch(src, pad, eos).to(device)
+                enc_t = pad_batch(src, pad, eos, pad_to).to(device)
                 lang_t = torch.full((src_t.size(0),), t, dtype=torch.long, device=device)
 
-                z_q, mem_mask = bottleneck(model, src_t, pad, ratio, slack, depth)
+                z_q, mem_mask = bottleneck(model, enc_t, pad, ratio, slack, depth)
                 if cond == "zero":
                     z_q = torch.zeros_like(z_q)
                 elif cond == "shuffle":
@@ -185,7 +185,7 @@ def roundtrip_condition(model, st_model, val_ids, langs, meta, device,
                     raise ValueError(cond)
 
                 if getattr(model, "decoder_type", "ar") == "nat":
-                    src_len = (src_t != pad).sum(dim=1)
+                    src_len = (enc_t != pad).sum(dim=1)
                     gen = generate_nat(model, z_q, mem_mask, lang_t, src_len,
                                        bos, pad, max_gen_len)
                 else:
@@ -218,6 +218,8 @@ def main():
     p.add_argument("--conditions", default="real,shuffle,zero")
     p.add_argument("--rvq-depth", type=int, default=None,
                    help="decode from only the first d RVQ levels (rate-distortion)")
+    p.add_argument("--pad-to", type=int, default=None,
+                   help="row length; default the training format (64 for CS-3, batch max for GPU); 0 = batch max")
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = p.parse_args()
 
@@ -272,12 +274,13 @@ def main():
           f"(same=identity~1.0 sanity; cross=translation ceiling)")
 
     print(f"\nFree-generation round-trip meaning (langs={args.langs}, "
-          f"max_gen_len={args.max_gen_len}, rvq_depth={args.rvq_depth or 'all'})")
+          f"max_gen_len={args.max_gen_len}, rvq_depth={args.rvq_depth or 'all'}, "
+          f"pad_to={train_pad_len(cfg, args.pad_to) or 'batch max'})")
     res = {}
     for c in conds:
         res[c] = roundtrip_condition(model, st, val_ids, langs, meta, args.device,
                                      ratio, slack, c, args.max_gen_len, args.batch_size,
-                                     args.rvq_depth)
+                                     args.rvq_depth, train_pad_len(cfg, args.pad_to))
         print(f"  {c:8s}  same={res[c]['same']:.4f}  cross={res[c]['cross']:.4f}")
 
     if "real" in res:

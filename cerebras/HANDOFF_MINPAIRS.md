@@ -119,6 +119,11 @@ Last updated 2026-10-30, at commit `dbe05ee` or later.
       identical at level 0; recon (4.98 at 20k, mix 4.61) is carried by
       levels 1 and up. Nothing in the loss stops it: the codebook is detached
       from the penalty, but the encoder can move all of z_e onto one code.
+    - **Final (50k, 2026-11-03):** recon 4.12 (mix 3.86); code 123 takes
+      99.6% of level-0 slots; round trip cross 0.366 (mix 0.419). Logs
+      exported to `logx/wsjob-d573czv37dh4xgqxgpsfyv`. A rerun needs an
+      anti-collapse term (level-0 usage entropy) or a contrast against
+      random pairs; ask before changing the loss.
 - **Offline readouts and padding (audit, 2026-11-02).** The encoder is not
   pad-invariant: the readout query adds `h.mean(dim=1)`, which averages over
   pad positions (`vqvae/encoder.py`). Training pads every row to 64. The
@@ -128,9 +133,13 @@ Last updated 2026-10-30, at commit `dbe05ee` or later.
   - `scripts/pair_hamming.py` now pads to 64 by default (`--pad-to`, 0 = old
     behaviour) and keeps only pairs that fit, as training does. Pad 0
     reproduces the old mix numbers exactly (negation 9.8 / 1 / 47% / 68%).
-  - `code_usage_audit.py`, `roundtrip_eval.py` and `codebook_stability.py`
-    still pad to batch max. Every level-0 number in PHASE9 that came from
-    them, on any model, used a format the model never trained on.
+  - All readout scripts now pad as the checkpoint trained
+    (`code_usage_audit.train_pad_len`: 64 for CS-3, batch max for GPU;
+    `--pad-to` overrides, 0 = batch max): `code_usage_audit.py`,
+    `codebook_stability.py`, `roundtrip_eval.py`, `compositionality_metrics.py`,
+    `dump_codes.py`, `scripts/pair_hamming.py`. `--pad-to 0` reproduces the
+    old numbers exactly. Only pair Hamming changed materially; the rerun §8
+    table is in PHASE9.
   - The in-training `pair_hamming` is exact (it equals the integer slot
     count in eval mode). In train mode dropout makes it noisy, and the
     partner pass has its own dropout mask (about +0.4 slots).

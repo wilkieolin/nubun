@@ -34,7 +34,7 @@ import torch
 import vqvae_select
 vqvae_select.select_from_argv()  # pre-port checkpoints need pre-port vqvae/
 from vqvae.data import load_corpus
-from code_usage_audit import build_model, encode_all_levels
+from code_usage_audit import build_model, encode_all_levels, pad_batch, train_pad_len
 
 
 def shard_rows(path):
@@ -55,6 +55,8 @@ def main():
     p.add_argument("--test-frac", type=float, default=0.05)
     p.add_argument("--batch-size", type=int, default=256)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--pad-to", type=int, default=None,
+                   help="row length; default the training format (64 for CS-3, batch max for GPU); 0 = batch max")
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     a = p.parse_args()
     torch.set_grad_enabled(False)
@@ -110,12 +112,11 @@ def main():
     lens = np.array([len(s) for s in seqs])
     order = np.argsort(lens, kind="stable")
     pad = meta.pad_token_id
+    T_pad = train_pad_len(ck["args"], a.pad_to)
+    print(f"pad_to={T_pad or 'batch max'}")
     for b, s in enumerate(range(0, N, a.batch_size)):
         idx = order[s:s + a.batch_size]
-        T = int(lens[idx].max())
-        bt = torch.full((len(idx), T), pad, dtype=torch.long)
-        for j, i in enumerate(idx):
-            bt[j, :lens[i]] = torch.from_numpy(seqs[i])
+        bt = pad_batch([seqs[i] for i in idx], pad, meta.eos_token_id, T_pad)
         codes[idx] = encode_all_levels(model, bt.to(a.device)).cpu().numpy().astype(np.uint8)
         if b % 500 == 0:
             print(f"  encoded {s + len(idx)}/{N}", flush=True)

@@ -61,7 +61,7 @@ def main():
            "d_ff": args.d_ff, "beta_commit": args.beta_commit,
            "use_stop_mask": False, "use_semantic_head": use_sem,
            "decoder_type": "ar", "use_rvq": True,
-           "n_rvq_levels": args.n_rvq_levels, "source": "cerebras-cs3",
+           "n_rvq_levels": args.n_rvq_levels, "source": "cerebras-cs3", "seq_len": args.seq_len,
            "cs_checkpoint": os.path.abspath(args.mdl)}
     # Same constructor call as roundtrip_eval.py.
     model = VQVAE(

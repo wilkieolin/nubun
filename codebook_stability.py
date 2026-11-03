@@ -38,7 +38,7 @@ from sklearn.metrics import normalized_mutual_info_score as nmi
 import vqvae_select
 vqvae_select.select_from_argv("--a")   # pre-port checkpoints need pre-port vqvae/
 vqvae_select.select_from_argv("--b")
-from code_usage_audit import build_model, encode_all_levels  # noqa: E402
+from code_usage_audit import build_model, encode_all_levels, pad_batch, train_pad_len  # noqa: E402
 from vqvae.data import combined_split, load_corpus  # noqa: E402
 
 
@@ -48,21 +48,17 @@ def load_model(path, emb, meta):
     model.load_state_dict(ck["model_state"], strict=True)
     if not hasattr(model.quantizer, "codebooks"):
         raise SystemExit(f"{path}: not an RVQ checkpoint")
-    return model, int(ck.get("step", -1))
+    return model, int(ck.get("step", -1)), ck["args"]
 
 
 @torch.no_grad()
-def encode(model, val_ids, langs, n, bs, pad):
+def encode(model, val_ids, langs, n, bs, pad, eos, T_pad):
     """-> (S, M, L) int64, sentences ordered language-major."""
     out = []
     for l in langs:
         for s in range(0, n, bs):
             seqs = [val_ids[i, l] for i in range(s, min(s + bs, n))]
-            T = max(len(x) for x in seqs)
-            bt = torch.full((len(seqs), T), pad, dtype=torch.long)
-            for i, x in enumerate(seqs):
-                bt[i, :len(x)] = torch.as_tensor(x)
-            out.append(encode_all_levels(model, bt))
+            out.append(encode_all_levels(model, pad_batch(seqs, pad, eos, T_pad)))
     return torch.cat(out).numpy()
 
 
@@ -143,6 +139,8 @@ def main():
                    help="a code is 'active' if it takes >= this fraction of slots")
     p.add_argument("--tau", type=float, default=0.5,
                    help="matched sentence-Jaccard at which a radical counts as recurring")
+    p.add_argument("--pad-to", type=int, default=None,
+                   help="row length; default each checkpoint's training format (64 for CS-3, batch max for GPU); 0 = batch max")
     p.add_argument("--out", default=None, help="JSON of level-0 matched pairs")
     args = p.parse_args()
 
@@ -157,15 +155,18 @@ def main():
     if vqvae_select.is_preport(ckA["model_state"]) != vqvae_select.is_preport(ckB["model_state"]):
         raise SystemExit("A and B must both be pre-port or both post-port checkpoints: "
                          "they need different vqvae/ code and cannot share a process")
-    mA, stepA = load_model(args.a, emb, meta)
-    mB, stepB = load_model(args.b, emb, meta)
+    mA, stepA, cfgA = load_model(args.a, emb, meta)
+    mB, stepB, cfgB = load_model(args.b, emb, meta)
+    padA, padB = train_pad_len(cfgA, args.pad_to), train_pad_len(cfgB, args.pad_to)
     k = mA.quantizer.k
     assert k == mB.quantizer.k and mA.encoder.m_max == mB.encoder.m_max
     print(f"A: {args.a} (step {stepA})\nB: {args.b} (step {stepB})")
-    print(f"{n} sentences x {len(langs)} langs, k={k}, m_max={mA.encoder.m_max}")
+    print(f"{n} sentences x {len(langs)} langs, k={k}, m_max={mA.encoder.m_max}, "
+          f"pad_to A={padA or 'batch max'} B={padB or 'batch max'}")
 
-    A = encode(mA, val_ids, langs, n, args.batch_size, pad)      # (S, M, L)
-    B = encode(mB, val_ids, langs, n, args.batch_size, pad)
+    eos = meta.eos_token_id
+    A = encode(mA, val_ids, langs, n, args.batch_size, pad, eos, padA)   # (S, M, L)
+    B = encode(mB, val_ids, langs, n, args.batch_size, pad, eos, padB)
     Bc = roll_sentences(B, len(langs), n)                        # chance partner
     S, M, L = A.shape
     usage_min = args.usage_min_frac * S * M

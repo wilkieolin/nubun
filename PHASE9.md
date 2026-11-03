@@ -1008,47 +1008,47 @@ medium run under way.** Spec and results in `augment/README.md` §9-10.
     tail and leaves level-0 diversification alone. Whether it shapes the
     converged code (500k: negation median 44) needs a longer run or a
     fine-tune from the long run.
-- **Wafer runs (2026-10-31): mix done, penalty blocked.**
-  - **mix** (`minpairs-mix-seed1-20261030T224344Z`, 50k, 8 pairs per batch,
-    no new loss), against `seed1-b128` at 50k:
+- **Wafer runs (2026-10-31 to 11-03): mix and penalty done; neither helps negation.**
+  - Runs: **mix** (`minpairs-mix-seed1-20261030T224344Z`, 8 pairs per
+    batch, no new loss) and **penalty** (`minpairs-penalty-seed1-20261102T194027Z`,
+    the same plus lambda 1.0, budget 2, level 0), each 50k from seed 1,
+    against `seed1-b128` at 50k.
+  - Every readout below pads rows to 64 as training does
+    (`code_usage_audit.train_pad_len`, 2026-11-03). The encoder's readout
+    query averages over pad positions, so codes depend on the padded length;
+    the first version of this table padded to the batch maximum.
 
-    | | seed 1 | mix |
-    |---|---|---|
-    | train-log recon at 50k (batches differ: mix has 16 pair rows) | 4.21 | 3.86 |
-    | round-trip cross / same (`roundtrip_eval.py`, A2 protocol) | 0.413 / 0.426 | 0.411 / 0.417 |
-    | distinct level-0 codes per sentence / full stacks | 2.3 / 11.2 | 2.7 / 13.0 |
-    | negation pairs, L0: mean / median / =0 / <=2 | 30.2 / 13 / 27% / 43% | 9.8 / 1 / 47% / 68% |
-    | tense pairs, L0: mean / median / =0 / <=2 | 12.5 / 1 / 46% / 66% | 10.9 / 1 / 44% / 67% |
-    | random pairs, L0 median | 64 | 64 |
-    | **padded to 64, as in training:** negation pairs, L0 | 36.7 / 58 / 18% / 32% | 45.1 / 62 / 7% / 18% |
-    | **padded to 64:** tense pairs, L0 | 19.4 / 2 / 30% / 52% | 13.1 / 1 / 33% / 61% |
-    | **padded to 64:** random pairs, L0 mean | 62.5 | 62.5 |
+    | | seed 1 | mix | penalty |
+    |---|---|---|---|
+    | train-log recon at 50k (batches differ: pair runs have 16 pair rows) | 4.21 | 3.86 | 4.12 |
+    | round-trip cross / same (`roundtrip_eval.py`, A2 protocol) | 0.420 / 0.432 | 0.419 / 0.431 | 0.366 / 0.377 |
+    | active level-0 codes / mean per-slot entropy (bits) | 97 / 5.34 | 98 / 5.28 | 4 / 0.04 |
+    | distinct level-0 codes per sentence / full stacks | 2.2 / 10.7 | 2.7 / 12.4 | 1.0 / 13.0 |
+    | negation pairs, L0: mean / median / =0 / <=2 | 36.7 / 58 / 18% / 32% | 45.1 / 62 / 7% / 18% | 0.0 / 0 / 100% / 100% |
+    | tense pairs, L0: mean / median / =0 / <=2 | 19.4 / 2 / 30% / 52% | 13.1 / 1 / 33% / 61% | 0.0 / 0 / 100% / 100% |
+    | random pairs, L0 mean | 62.5 | 62.5 | 0.1 |
 
-    - **Correction (2026-11-02): the three pair rows above the bold ones are
-      a padding artifact.** The encoder's readout query averages over pad
-      positions, so codes depend on how far a row is padded. Training pads to
-      64; the readouts padded to the batch maximum. In the training format,
-      the mix makes negation pairs *further apart* (32% to 18% within 2) and
-      tense pairs closer (52% to 61%). The bullets below on negation are
-      withdrawn. The round-trip, code-count and stability rows came from
-      scripts that still pad to batch max and need rerunning.
-
-    - The mix alone pulls seed 1's negation pairs together (43% to 68% within 2
-      slots, about seed 2's 50k baseline of 69%). Tense pairs do not move.
-      Level-0 diversification is not held back (2.7 against 2.3).
+    - **mix:** negation pairs move *apart* (32% to 18% within 2 slots),
+      tense pairs closer (52% to 61%). Round trip and level-0 usage do not
+      change. The version of this table padded to the batch maximum showed
+      negation 43% to 68% within 2; that was the padding, and is withdrawn.
+      Other rows barely move with padding (round trip 0.413 / 0.426 for seed
+      1 at batch max, code counts within 0.6).
+    - **penalty:** level 0 collapses. One code (123) takes 99.6% of level-0
+      slots, so minimal and random pairs both score 0 and the penalty is met
+      without separating anything. Levels 0-1 together: negation pairs 50.2
+      slots apart, random 63.1. Round trip drops 0.054. Nothing in the loss
+      prevents the collapse; a rerun needs an anti-collapse term or a
+      contrast against random pairs.
+    - `codebook_stability.py`, level 0: seed 1 against mix, slot agreement
+      0.411 (chance 0.143) and recurrence 0.153, about the cross-seed values
+      (A4: 0.422, 0.092, batch-max padding). The data change alone reshuffles
+      level 0 as much as a new seed does. Against penalty: 0.062 (chance
+      0.063).
     - Caveats:
       - the readout uses the training pairs: no held-out split exists, and
         each pair was drawn about 12 times;
-      - seed 1's negation baseline is far worse than seed 2's, so part of
-        the gain may be seed variance.
-    - `codebook_stability.py`, seed 1 against mix, level 0: slot agreement
-      0.396 (chance 0.141) and recurrence 0.138, about the cross-seed values
-      (A4: 0.422, 0.092). The data change alone reshuffles level 0 as much
-      as a new seed does.
-  - **penalty (2026-11-02):** it runs after the codebook is detached from
-    the soft distance (`a797074`), but level 0 collapses: at 20k one code
-    takes 100% of level-0 slots, so minimal and random pairs both score 0.
-    Recon 4.98 at 20k (mix 4.61). See `cerebras/HANDOFF_MINPAIRS.md`.
+      - one seed per arm.
   - **penalty, before the fix:** it did not run on the wafer. Every form failed:
     - the pairing as a reshape of the batch axis, or as a matmul over it,
       does not compile;
@@ -1118,4 +1118,11 @@ cross-seed core rests on three seeds and one recipe; the decoded concepts
 of the core are read from the A1 probe's aggregate tokens, which undercounts
 (seed 3's probe output is the noisiest of the three), so weak readings such
 as seed 3's CHILD may be probe noise rather than a different concept.
+
+Workstream A (§2, A1-A6) encoded CS-3 checkpoints with rows padded to the
+batch maximum; training pads to 64, and the encoder is not pad-invariant
+(2026-11-03, §8). Aggregate statistics barely move with padding (code counts,
+cross-model slot agreement, round trip within 0.01 on seed 1 at 50k), but
+per-sentence code comparisons do, and A has not been rerun at 64. The
+readout scripts now default to the training format.
 

@@ -44,7 +44,7 @@ import torch
 import vqvae_select
 vqvae_select.select_from_argv()  # pre-port checkpoints need pre-port vqvae/
 from vqvae.data import load_corpus
-from code_usage_audit import build_model, encode_all_levels
+from code_usage_audit import build_model, encode_all_levels, pad_batch, train_pad_len
 
 FIELDS = {
     "health": "disease virus patient hospital doctor medical health cancer infection vaccine "
@@ -315,6 +315,8 @@ def main():
     p.add_argument("--n-shuffles", type=int, default=3)
     p.add_argument("--batch-size", type=int, default=64)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--pad-to", type=int, default=None,
+                   help="row length; default the training format (64 for CS-3, batch max for GPU); 0 = batch max")
     p.add_argument("--outdir", default="results/phase9")
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     a = p.parse_args()
@@ -346,14 +348,13 @@ def main():
     model.load_state_dict(ck["model_state"], strict=True)
     model = model.to(a.device)
     q = model.quantizer
+    T_pad = train_pad_len(ck["args"], a.pad_to)
+    print(f"pad_to={T_pad or 'batch max'}")
     codes, zq, sent_of, lang_of = [], [], [], []
     for l in range(n_langs):
         for s in range(0, n_sent, a.batch_size):
             seqs = [ids[i, l] for i in range(s, min(s + a.batch_size, n_sent))]
-            T = max(len(x) for x in seqs)
-            bt = torch.full((len(seqs), T), pad, dtype=torch.long)
-            for i, x in enumerate(seqs):
-                bt[i, :len(x)] = torch.as_tensor(x)
+            bt = pad_batch(seqs, pad, meta.eos_token_id, T_pad)
             c = encode_all_levels(model, bt.to(a.device))          # (B, M, L)
             # cumulative quantised vector per level, pooled over slots: (B, L, d_code)
             vecs = torch.stack([cb[c[..., j]] for j, cb in enumerate(q.codebooks)], 2)

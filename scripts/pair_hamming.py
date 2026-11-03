@@ -9,12 +9,12 @@ a model sits, with or without it.
   python scripts/pair_hamming.py --checkpoint model_dir/<run>/nubun_cs_step50000.eval.pt \\
       --minpairs-dir data/minpairs_medium [--side en] [--depths 1,2,8]
 
-Rows are padded to --pad-to (default 64, the wafer runs' --seq-len), as in
-training: the CS-3 encoder seeds its readout queries with the mean encoder state
-over ALL positions, padding included (vqvae/encoder.py), so codes depend on the
-padded length, and pad-to-batch-max (--pad-to 0, the old behaviour) is a format
-the wafer models never saw. Pairs whose members do not fit are skipped, as in
-the training sampler.
+Rows are padded as in training (code_usage_audit.train_pad_len: 64 for CS-3
+checkpoints, batch max for GPU ones; --pad-to overrides). The encoder seeds its
+readout queries with the mean encoder state over ALL positions, padding included
+(vqvae/encoder.py), so codes depend on the padded length, and pad-to-batch-max
+(--pad-to 0, the old behaviour) is a format the wafer models never saw. Pairs
+whose members do not fit are skipped, as in the training sampler.
 
 Baseline, converged seed 2 (500k, no pairs in training), pilot pairs, X side,
 level 0: tense median 2 slots (random 62), negation median 47 (bimodal: an
@@ -30,7 +30,7 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import vqvae_select  # noqa: E402
-from code_usage_audit import build_model, encode_all_levels  # noqa: E402
+from code_usage_audit import build_model, encode_all_levels, pad_batch, train_pad_len  # noqa: E402
 from vqvae.data import load_corpus  # noqa: E402
 
 FACTORS = ("negation", "tense")
@@ -47,8 +47,8 @@ def main():
     p.add_argument("--batch-size", type=int, default=64)
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--pad-to", type=int, default=64,
-                   help="pad every row to this length, as in training; 0 = batch max")
+    p.add_argument("--pad-to", type=int, default=None,
+                   help="row length; default the training format (64 for CS-3, batch max for GPU); 0 = batch max")
     a = p.parse_args()
 
     ck = vqvae_select.load_checkpoint(a.checkpoint)
@@ -58,14 +58,13 @@ def main():
     model.load_state_dict(ck["model_state"], strict=True)
     model = model.to(a.device)
     pad = meta.pad_token_id
+    a.pad_to = train_pad_len(ck["args"], a.pad_to)
 
     def codes(seqs):
         out = []
         for s in range(0, len(seqs), a.batch_size):
             ch = seqs[s:s + a.batch_size]
-            bt = torch.full((len(ch), a.pad_to or max(map(len, ch))), pad, dtype=torch.long)
-            for j, x in enumerate(ch):
-                bt[j, :len(x)] = torch.from_numpy(np.asarray(x))
+            bt = pad_batch(ch, pad, meta.eos_token_id, a.pad_to)
             out.append(encode_all_levels(model, bt.to(a.device)).cpu().numpy())
         return np.concatenate(out)                  # (N, M, L)
 
