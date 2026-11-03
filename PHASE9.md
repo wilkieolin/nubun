@@ -1049,6 +1049,25 @@ medium run under way.** Spec and results in `augment/README.md` §9-10.
       - the readout uses the training pairs: no held-out split exists, and
         each pair was drawn about 12 times;
       - one seed per arm.
+  - **500k baselines at pad 64 (2026-11-03)**, the three converged seeds, no
+    pairs in training, level 0, mean / median / =0 / <=2:
+
+    | | seed 2 | seed 42 | seed 3 |
+    |---|---|---|---|
+    | negation pairs | 37.3 / 52 / 3% / 17% | 41.5 / 54 / 6% / 16% | 38.9 / 53 / 2% / 15% |
+    | tense pairs | 14.2 / 3 / 11% / 49% | 14.8 / 3 / 17% / 48% | 13.1 / 3 / 8% / 44% |
+    | random pairs, mean | 59.7 | 60.3 | 61.1 |
+
+    - Seed 2 at batch max reproduces the earlier baseline (negation median
+      44, 25% within 2; tense median 2, 52%). At 64 the picture is the same,
+      a little worse, and the three seeds agree closely.
+    - The case for branch 2 stands: in every converged model a negation
+      pair is about as far apart at level 0 as two unrelated sentences for
+      most pairs, while tense pairs sit within a few slots. Levels 0-1:
+      negation 51-53, random 64.
+    - Training pushes negation apart: seed 1 at 50k has 32% within 2, the
+      500k models 15-17%. A 50k run starts from a level 0 where the problem
+      is half its converged size.
   - **penalty, before the fix:** it did not run on the wafer. Every form failed:
     - the pairing as a reshape of the batch axis, or as a matmul over it,
       does not compile;
