@@ -1,0 +1,47 @@
+model_dir/seed1-b128-20261013T221048Z/nubun_cs_step50000.eval.pt (step 50000)  mode=transplant  side=x  pad_to=64  shards=de,fr,es,ru,ja
+negation detector on references (accuracy vs English-side polarity, clean pairs):
+  de: 99.5% on 598 rows (100% of pairs clean on the English side)
+  fr: 99.5% on 598 rows (100% of pairs clean on the English side)
+  es: 99.7% on 598 rows (100% of pairs clean on the English side)
+  ru: 99.5% on 598 rows (100% of pairs clean on the English side)
+  ja: 97.5% on 598 rows (100% of pairs clean on the English side)
+de  negation A->B ->en  n= 100 slots   59 (=0  12%) | progress median/>0.5: level0 +0.39/41% stack +0.70/68% control +0.41/35% | flip (70/98 decodable): level0 53% stack 70% control 30%
+de  negation A->B ->de  n= 100 slots   59 (=0  12%) | progress median/>0.5: level0 +0.47/45% stack +0.63/59% control +0.30/29% | flip (78/98 decodable): level0 50% stack 55% control 26%
+de  negation B->A ->en  n= 100 slots   59 (=0  12%) | progress median/>0.5: level0 +0.45/47% stack +0.69/63% control +0.29/23% | flip (70/98 decodable): level0 67% stack 74% control 23%
+de  negation B->A ->de  n= 100 slots   59 (=0  12%) | progress median/>0.5: level0 +0.50/51% stack +0.75/65% control +0.31/32% | flip (78/98 decodable): level0 59% stack 67% control 22%
+de  tense    A->B ->en  n= 100 slots    2 (=0  32%) | progress median/>0.5: level0 +0.17/27% stack +0.24/38% control +0.20/21%
+de  tense    A->B ->de  n= 100 slots    2 (=0  32%) | progress median/>0.5: level0 +0.13/28% stack +0.22/31% control +0.26/27%
+de  tense    B->A ->en  n= 100 slots    2 (=0  32%) | progress median/>0.5: level0 +0.12/23% stack +0.23/29% control +0.18/20%
+de  tense    B->A ->de  n= 100 slots    2 (=0  32%) | progress median/>0.5: level0 +0.21/19% stack +0.24/31% control +0.18/21%
+fr  negation A->B ->en  n= 100 slots   62 (=0  15%) | progress median/>0.5: level0 +0.46/44% stack +0.71/62% control +0.35/27% | flip (72/99 decodable): level0 61% stack 69% control 19%
+fr  negation A->B ->fr  n= 100 slots   62 (=0  15%) | progress median/>0.5: level0 +0.51/52% stack +0.84/66% control +0.31/26% | flip (76/99 decodable): level0 67% stack 78% control 30%
+fr  negation B->A ->en  n= 100 slots   62 (=0  15%) | progress median/>0.5: level0 +0.47/48% stack +0.76/69% control +0.30/25% | flip (72/99 decodable): level0 62% stack 72% control 28%
+fr  negation B->A ->fr  n= 100 slots   62 (=0  15%) | progress median/>0.5: level0 +0.55/57% stack +0.75/67% control +0.35/35% | flip (76/99 decodable): level0 71% stack 78% control 38%
+fr  tense    A->B ->en  n= 100 slots    3 (=0  24%) | progress median/>0.5: level0 +0.15/19% stack +0.39/44% control +0.23/21%
+fr  tense    A->B ->fr  n= 100 slots    3 (=0  24%) | progress median/>0.5: level0 +0.25/28% stack +0.27/38% control +0.28/26%
+fr  tense    B->A ->en  n= 100 slots    3 (=0  24%) | progress median/>0.5: level0 +0.16/28% stack +0.27/34% control +0.25/25%
+fr  tense    B->A ->fr  n= 100 slots    3 (=0  24%) | progress median/>0.5: level0 +0.15/19% stack +0.34/41% control +0.27/24%
+es  negation A->B ->en  n= 100 slots   54 (=0  17%) | progress median/>0.5: level0 +0.45/44% stack +0.70/63% control +0.34/32% | flip (58/96 decodable): level0 60% stack 69% control 33%
+es  negation A->B ->es  n= 100 slots   54 (=0  17%) | progress median/>0.5: level0 +0.47/47% stack +0.68/56% control +0.35/29% | flip (64/96 decodable): level0 61% stack 70% control 36%
+es  negation B->A ->en  n= 100 slots   54 (=0  17%) | progress median/>0.5: level0 +0.32/32% stack +0.57/54% control +0.25/13% | flip (58/96 decodable): level0 62% stack 69% control 21%
+es  negation B->A ->es  n= 100 slots   54 (=0  17%) | progress median/>0.5: level0 +0.48/47% stack +0.74/62% control +0.30/22% | flip (64/96 decodable): level0 64% stack 78% control 33%
+es  tense    A->B ->en  n= 100 slots    6 (=0  24%) | progress median/>0.5: level0 +0.29/31% stack +0.44/45% control +0.26/22%
+es  tense    A->B ->es  n= 100 slots    6 (=0  24%) | progress median/>0.5: level0 +0.34/35% stack +0.48/47% control +0.25/21%
+es  tense    B->A ->en  n= 100 slots    6 (=0  24%) | progress median/>0.5: level0 +0.29/30% stack +0.48/48% control +0.29/24%
+es  tense    B->A ->es  n= 100 slots    6 (=0  24%) | progress median/>0.5: level0 +0.15/33% stack +0.35/40% control +0.29/26%
+ru  negation A->B ->en  n= 100 slots   16 (=0  22%) | progress median/>0.5: level0 +0.43/42% stack +0.67/60% control +0.34/26% | flip (66/98 decodable): level0 50% stack 64% control 24%
+ru  negation A->B ->ru  n= 100 slots   16 (=0  22%) | progress median/>0.5: level0 +0.42/40% stack +0.66/60% control +0.24/25% | flip (72/98 decodable): level0 47% stack 61% control 29%
+ru  negation B->A ->en  n= 100 slots   16 (=0  22%) | progress median/>0.5: level0 +0.32/33% stack +0.60/57% control +0.32/27% | flip (66/98 decodable): level0 44% stack 65% control 18%
+ru  negation B->A ->ru  n= 100 slots   16 (=0  22%) | progress median/>0.5: level0 +0.43/43% stack +0.59/59% control +0.24/21% | flip (72/98 decodable): level0 60% stack 62% control 26%
+ru  tense    A->B ->en  n= 100 slots    3 (=0  29%) | progress median/>0.5: level0 +0.19/22% stack +0.30/32% control +0.20/24%
+ru  tense    A->B ->ru  n= 100 slots    3 (=0  29%) | progress median/>0.5: level0 +0.12/22% stack +0.22/34% control +0.22/21%
+ru  tense    B->A ->en  n= 100 slots    3 (=0  29%) | progress median/>0.5: level0 +0.12/22% stack +0.33/37% control +0.20/20%
+ru  tense    B->A ->ru  n= 100 slots    3 (=0  29%) | progress median/>0.5: level0 +0.09/19% stack +0.22/28% control +0.26/22%
+ja  negation A->B ->en  n= 100 slots   60 (=0  17%) | progress median/>0.5: level0 +0.45/47% stack +0.61/63% control +0.34/31% | flip (62/100 decodable): level0 58% stack 61% control 26%
+ja  negation A->B ->ja  n= 100 slots   60 (=0  17%) | progress median/>0.5: level0 +0.32/39% stack +0.70/60% control +0.36/32% | flip (42/100 decodable): level0 45% stack 74% control 40%
+ja  negation B->A ->en  n= 100 slots   60 (=0  17%) | progress median/>0.5: level0 +0.48/48% stack +0.70/68% control +0.43/36% | flip (62/100 decodable): level0 56% stack 69% control 39%
+ja  negation B->A ->ja  n= 100 slots   60 (=0  17%) | progress median/>0.5: level0 +0.42/42% stack +0.69/57% control +0.40/38% | flip (42/100 decodable): level0 55% stack 74% control 48%
+ja  tense    A->B ->en  n= 100 slots    2 (=0  34%) | progress median/>0.5: level0 +0.10/18% stack +0.28/38% control +0.21/18%
+ja  tense    A->B ->ja  n= 100 slots    2 (=0  34%) | progress median/>0.5: level0 +0.06/27% stack +0.32/40% control +0.12/26%
+ja  tense    B->A ->en  n= 100 slots    2 (=0  34%) | progress median/>0.5: level0 +0.09/23% stack +0.29/34% control +0.23/22%
+ja  tense    B->A ->ja  n= 100 slots    2 (=0  34%) | progress median/>0.5: level0 +0.00/22% stack +0.01/29% control +0.00/31%

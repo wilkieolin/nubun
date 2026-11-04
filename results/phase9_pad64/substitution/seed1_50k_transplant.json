@@ -1,0 +1,2286 @@
+{
+ "checkpoint": "model_dir/seed1-b128-20261013T221048Z/nubun_cs_step50000.eval.pt",
+ "args": {
+  "checkpoint": "model_dir/seed1-b128-20261013T221048Z/nubun_cs_step50000.eval.pt",
+  "minpairs_dir": "data/minpairs_npy",
+  "mode": "transplant",
+  "radical": null,
+  "slot_frac": 0.5,
+  "langs": "de,fr,es,ru,ja",
+  "side": "x",
+  "tgt_langs": "en,src",
+  "n_pairs": 100,
+  "n_examples": 5,
+  "max_gen_len": 48,
+  "batch_size": 64,
+  "pad_to": null,
+  "corpus": "data/parallel_corpus.npz",
+  "embedding_table": "data/embedding_table.pt",
+  "semantic_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "seed": 0,
+  "out": "results/phase9_pad64/substitution/seed1_50k_transplant.json",
+  "device": "cpu"
+ },
+ "rows": [
+  {
+   "lang": "de",
+   "factor": "negation",
+   "direction": "A->B",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 59.0,
+   "identical_level0": 0.12,
+   "neg_clean": 98,
+   "neg_decodable": 70,
+   "level0_progress": [
+    0.38949793577194214,
+    0.41414141414141414,
+    99
+   ],
+   "level0_keep_A": 0.6623591780662537,
+   "level0_flip": 0.5285714285714286,
+   "examples": [
+    {
+     "A": "Canada has signed its name on the National Safety Agency of Canada on 31 December 1999.",
+     "B": "In 1999 Canada Canada has been established by Canada and Canada Department of Canada since 1999.",
+     "level0": "Canada Canada has signed its role in December 1998 by the Canadian National Defence Division of Canada and Canada to the United States Department of Defense Canada and Canada in 1999."
+    },
+    {
+     "A": "Your life was worthless to believe you were alive because I could live here",
+     "B": "Your life is not worthless because you were not able to do anything else than you were alive",
+     "level0": "Your life was worthless because I wanted to prove you to save me"
+    },
+    {
+     "A": "He said he wanted to go home early yesterday",
+     "B": "He said he didn not leave tomorrow morning",
+     "level0": "He said he didn not want to leave home"
+    },
+    {
+     "A": "This information will be available in the local website wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwBARD linksrs",
+     "B": "This information will not be found on site sites or site sites",
+     "level0": "This information will be found on local sites and local information on site site sites"
+    },
+    {
+     "A": "Look at this time you tried to shoot this guy who tried to shoot us out of 20 seconds ago before you hit this video",
+     "B": "Now you haven tried to stop this video because you didn this time ago because they didn this video last night trying to stop this video again because you didn it again",
+     "level0": "Look at this time you tried to try to shoot this guy who tried to shoot us out of 20 seconds ago before you started trying to shoot this guy who tried to kill us out this guy who tried to kill us out of the game"
+    }
+   ],
+   "stack_progress": [
+    0.700192391872406,
+    0.6767676767676768,
+    99
+   ],
+   "stack_keep_A": 0.660897970199585,
+   "stack_flip": 0.7,
+   "control_progress": [
+    0.4067184329032898,
+    0.35353535353535354,
+    99
+   ],
+   "control_keep_A": 0.5776464939117432,
+   "control_flip": 0.3
+  },
+  {
+   "lang": "de",
+   "factor": "negation",
+   "direction": "A->B",
+   "tgt": "de",
+   "n": 100,
+   "slots_changed_median": 59.0,
+   "identical_level0": 0.12,
+   "neg_clean": 98,
+   "neg_decodable": 78,
+   "level0_progress": [
+    0.4653223156929016,
+    0.45454545454545453,
+    99
+   ],
+   "level0_keep_A": 0.7042226195335388,
+   "level0_flip": 0.5,
+   "examples": [
+    {
+     "A": "Der National Security Council wurde im November 1999 über die Erhaltung der National Hockey Nacional des Systemss und der National Hockeys Agency im Hinblick auf dem Gebiet von Vancouver und dem Vereinigten Staaten im Jahr 1999 gegründet wordengestellt wurde und wurde",
+     "B": "Der Bundesministerium wurde seit 1999 im Jahr 1999 gegründet worden sein und wurde seit dem Bundesministerium der Vereinigten Staaten im Vereinigten Staaten im Vereinigten Staaten im Vereinigten Staaten im Vereinigten Staaten tätig worden sein worden sein worden sein",
+     "level0": "Der National Hockey Board wurde im November 1999 mit dem National Security Service für die Erhaltung von Fort Canada und dem Bundesministerium von Vancouver und dem Vereinigten Staaten im Jahr 1999 gegründet worden war er sich im Hinblick auf dem Gebiet der"
+    },
+    {
+     "A": "Ich habe dir ein Leben für dich selbst zu tun und ich habe dir selbst überzeugt und dir zu tun",
+     "B": "Der Mann ist nicht genug für mich zu tun und ich habe mir nicht mehr als ein Leben zu tun und ich habe dir nicht mehr als ein paar Menschen zu tun und ich habe dir nicht mehr als ein paar Menschen zu tun und nicht mehr",
+     "level0": "Ich habe dir nur gesagt und ich habe dir nicht mehr als dir zu tun"
+    },
+    {
+     "A": "Er sagte mir morgen nach Hause nach Hause zu gehen",
+     "B": "Ich sagte nicht nach Hause nach Hause nach Hause zu gehen",
+     "level0": "Ich sagte ihm nicht nach Hause zurückgehen lassen sollen"
+    },
+    {
+     "A": "Das Portal ist ein interessante Informationen über die Stadt und der Stadtzentrum zu finden und finden Sie sich hier zu finden",
+     "B": "Das hier ist nicht möglich für den Orten von den lokalen Orten und der Stadt nicht mehr über den Orten finden",
+     "level0": "Das Portal ist ein Ortportal von Ihnen nicht mehr Informationen über die Stadt zu finden und kann nicht mehr Informationen finden"
+    },
+    {
+     "A": "Du hast nur 100 Sekunden auf dem Weg gekommen warst du nur ein paar Mal ein paar Mal zu tun hast du mich nur ein paar Mal zu tun hast du mich nur ein paar Mal zu tun hast du mich nicht mehr als ein paar",
+     "B": "Das war nicht nur 20 Sekunden vor dem Film nicht mehr als ein paar Sekunden zu tun und sie haben nicht mehr Zeit zu tun",
+     "level0": "Du hast nur 100 Sekunden als ein paar Mal ein paar Mal zu tun haben und sie haben nur ein paar Mal ein paar Mal zu tun und sie haben nur ein paar Mal zu tun und sie haben nur ein paar Mal zu tun und sie"
+    }
+   ],
+   "stack_progress": [
+    0.6314502954483032,
+    0.5858585858585859,
+    99
+   ],
+   "stack_keep_A": 0.7049505710601807,
+   "stack_flip": 0.5512820512820513,
+   "control_progress": [
+    0.3005051016807556,
+    0.29292929292929293,
+    99
+   ],
+   "control_keep_A": 0.627784013748169,
+   "control_flip": 0.2564102564102564
+  },
+  {
+   "lang": "de",
+   "factor": "negation",
+   "direction": "B->A",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 59.0,
+   "identical_level0": 0.12,
+   "neg_clean": 98,
+   "neg_decodable": 70,
+   "level0_progress": [
+    0.45029348134994507,
+    0.47474747474747475,
+    99
+   ],
+   "level0_keep_A": 0.6436980962753296,
+   "level0_flip": 0.6714285714285714,
+   "examples": [
+    {
+     "A": "In 1999 Canada Canada has been established by Canada and Canada Department of Canada since 1999.",
+     "B": "Canada has signed its name on the National Safety Agency of Canada on 31 December 1999.",
+     "level0": "Canada has been responsible for the Department of Public Affairs Canada for Canada and Canada Canada"
+    },
+    {
+     "A": "Your life is not worthless because you were not able to do anything else than you were alive",
+     "B": "Your life was worthless to believe you were alive because I could live here",
+     "level0": "Your life is worthless because you were alive enough than you are alive than you are alive"
+    },
+    {
+     "A": "He said he didn not leave tomorrow morning",
+     "B": "He said he wanted to go home early yesterday",
+     "level0": "He said he didn tomorrow morning"
+    },
+    {
+     "A": "This information will not be found on site sites or site sites",
+     "B": "This information will be available in the local website wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwBARD linksrs",
+     "level0": "This page is not available in the city site where you can find information about the city site"
+    },
+    {
+     "A": "Now you haven tried to stop this video because you didn this time ago because they didn this video last night trying to stop this video again because you didn it again",
+     "B": "Look at this time you tried to shoot this guy who tried to shoot us out of 20 seconds ago before you hit this video",
+     "level0": "Now you haven tried to stop this video because you didn this time ago when we were trying to stop this video again"
+    }
+   ],
+   "stack_progress": [
+    0.693321704864502,
+    0.6262626262626263,
+    99
+   ],
+   "stack_keep_A": 0.6656313538551331,
+   "stack_flip": 0.7428571428571429,
+   "control_progress": [
+    0.2877471446990967,
+    0.23232323232323232,
+    99
+   ],
+   "control_keep_A": 0.5988274812698364,
+   "control_flip": 0.22857142857142856
+  },
+  {
+   "lang": "de",
+   "factor": "negation",
+   "direction": "B->A",
+   "tgt": "de",
+   "n": 100,
+   "slots_changed_median": 59.0,
+   "identical_level0": 0.12,
+   "neg_clean": 98,
+   "neg_decodable": 78,
+   "level0_progress": [
+    0.5030096173286438,
+    0.5050505050505051,
+    99
+   ],
+   "level0_keep_A": 0.6760929226875305,
+   "level0_flip": 0.5897435897435898,
+   "examples": [
+    {
+     "A": "Der Bundesministerium wurde seit 1999 im Jahr 1999 gegründet worden sein und wurde seit dem Bundesministerium der Vereinigten Staaten im Vereinigten Staaten im Vereinigten Staaten im Vereinigten Staaten im Vereinigten Staaten tätig worden sein worden sein worden sein",
+     "B": "Der National Security Council wurde im November 1999 über die Erhaltung der National Hockey Nacional des Systemss und der National Hockeys Agency im Hinblick auf dem Gebiet von Vancouver und dem Vereinigten Staaten im Jahr 1999 gegründet wordengestellt wurde und wurde",
+     "level0": "Der Verwaltung der Verwaltung der Verwaltung der Verwaltung des Verwaltungsrats wurde im Jahr 1999 nicht nur im Hinblick auf den Gebieten der Mitgliedstaaten der Vereinigten Staaten und der Vereinigten Staaten im Hinblick auf den Gebieten der Regierung"
+    },
+    {
+     "A": "Der Mann ist nicht genug für mich zu tun und ich habe mir nicht mehr als ein Leben zu tun und ich habe dir nicht mehr als ein paar Menschen zu tun und ich habe dir nicht mehr als ein paar Menschen zu tun und nicht mehr",
+     "B": "Ich habe dir ein Leben für dich selbst zu tun und ich habe dir selbst überzeugt und dir zu tun",
+     "level0": "Der Mann ist nicht genug für mich zu tun und ich habe mir nur für dich selbst zu tun und ich habe es nicht mehr als ein Leben zu tun und ich habe dir nicht mehr als ein Leben zu tun und ich bin nicht mehr als"
+    },
+    {
+     "A": "Ich sagte nicht nach Hause nach Hause nach Hause zu gehen",
+     "B": "Er sagte mir morgen nach Hause nach Hause zu gehen",
+     "level0": "Er sagte morgen nach Hause nach Hause nach Hause"
+    },
+    {
+     "A": "Das hier ist nicht möglich für den Orten von den lokalen Orten und der Stadt nicht mehr über den Orten finden",
+     "B": "Das Portal ist ein interessante Informationen über die Stadt und der Stadtzentrum zu finden und finden Sie sich hier zu finden",
+     "level0": "Das hier ist nicht mögliche Informationen über den Orten der Stadt und der Stadt der Stadt zu finden"
+    },
+    {
+     "A": "Das war nicht nur 20 Sekunden vor dem Film nicht mehr als ein paar Sekunden zu tun und sie haben nicht mehr Zeit zu tun",
+     "B": "Du hast nur 100 Sekunden auf dem Weg gekommen warst du nur ein paar Mal ein paar Mal zu tun hast du mich nur ein paar Mal zu tun hast du mich nur ein paar Mal zu tun hast du mich nicht mehr als ein paar",
+     "level0": "Das war nicht nur 20 Sekunden vor dem Film nicht mehr als ein paar Sekunden gespielt worden warst du nicht mehr als ein paar Mal zu tun"
+    }
+   ],
+   "stack_progress": [
+    0.7524875402450562,
+    0.6464646464646465,
+    99
+   ],
+   "stack_keep_A": 0.6756112575531006,
+   "stack_flip": 0.6666666666666666,
+   "control_progress": [
+    0.31045809388160706,
+    0.32323232323232326,
+    99
+   ],
+   "control_keep_A": 0.6193989515304565,
+   "control_flip": 0.21794871794871795
+  },
+  {
+   "lang": "de",
+   "factor": "tense",
+   "direction": "A->B",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 2.0,
+   "identical_level0": 0.32,
+   "level0_progress": [
+    0.1699933111667633,
+    0.26595744680851063,
+    94
+   ],
+   "level0_keep_A": 0.7935879230499268,
+   "examples": [
+    {
+     "A": "The final report contained by Canada Canada and Canada Canada Canada to report the Canadian Parliament on Canadian Statistics Canada and Canada Canada on the basis of the final reporting paper prepared by Canada and Canada Canada and Canada Canada Canada",
+     "B": "The final report contained by Parliamentary Canada and Parliamentary Council Directive 1994/231 contained by Parliamentary Parliamentary Council members and Parliamentary Parliamentary Council members of Canada and Canada and Canada",
+     "level0": "The Canadian Parliament has published its report on the Canadian Parliament and Canada Gazette Canada Gazette Canada Gazette Canada and Canada Gazette Canada Gazette Canada Canada Canada Canada Canada Canada Canada Canada Canada Canada Canada Canada Canada Canada Canada Canada Canada Canada"
+    },
+    {
+     "A": "My whole room is mine",
+     "B": "My whole whole mission was over there",
+     "level0": "My whole room was fullly covered by my headquarters"
+    },
+    {
+     "A": "That means why I used to use the Internet computers and why did I use my computers and why they were using all the computers and computers from Japan and Japan where they were using their computers and computers are being",
+     "B": "I mean that I was doing a lot of computers from Japan because I had accessed my computer computers",
+     "level0": "That is why I was talking about why I was talking about the Internet network because I was talking about why I was doing to stop it all over Japan because they were doing to stop me in the world"
+    },
+    {
+     "A": "Your brother will be afraid to protect your own powers and fear them against your own heads and fears against them",
+     "B": "Your leader will be threatened against your own head against your own head against his own head against his own head against his head against his head against his head against his head against his head against his head against his head against his head",
+     "level0": "Your brother will protect you against your own heads and fear them against your own heads and fears against them"
+    },
+    {
+     "A": "We need to find ourselves to find solutions for our own problems",
+     "B": "We found ourselves to help us solve us",
+     "level0": "We need to find ourselves out there"
+    }
+   ],
+   "stack_progress": [
+    0.24155910313129425,
+    0.3829787234042553,
+    94
+   ],
+   "stack_keep_A": 0.785184919834137,
+   "control_progress": [
+    0.20325914025306702,
+    0.2127659574468085,
+    94
+   ],
+   "control_keep_A": 0.7406572103500366
+  },
+  {
+   "lang": "de",
+   "factor": "tense",
+   "direction": "A->B",
+   "tgt": "de",
+   "n": 100,
+   "slots_changed_median": 2.0,
+   "identical_level0": 0.32,
+   "level0_progress": [
+    0.12881703674793243,
+    0.2765957446808511,
+    94
+   ],
+   "level0_keep_A": 0.8159770369529724,
+   "examples": [
+    {
+     "A": "Die Bericht über die Dokumente des Bundesministeriums und der britischen Parlament veröffentlichte die Bericht über die Dokumente des Parlaments und dem Parlament veröffentlicht werden können und veröffentlicht werden können die Bericht über die Aufnahme des Dokumentes für die Ver",
+     "B": "Die Bericht über die Dokumente des Parlaments veröffentlicht wurden durch die Dokumente des Parlaments und der britischen Parlament veröffentlicht wordenen Bericht über die Dokumente des Parlaments und der britischen Parlament veröffentlicht worden sind und veröffentlicht werden können die",
+     "level0": "Die Dokumente des Bundesministeriums und Dokumentes über die Verzeichnisung der britischen Regierungen und der britischen Regierungen der Vereinigten Staaten veröffentlicht wurden und veröffentlicht werden können die Bericht über die Verlängerung des Bericht"
+    },
+    {
+     "A": "Ich bin alles auf meinem Tischraum",
+     "B": "Ich habe alle ganze Zeuge auf dem Bodenraum geschnitten",
+     "level0": "Ich habe alles auf dem Dachraum gespielt und verstanden alles auf dem Dachraum"
+    },
+    {
+     "A": "Ich habe nur eine Frage auf die Website von Japan und Japan zu einem Computer von Googleen aus dem Internet von Google und Japan zu verzeichnen und sie sind immer noch immer noch immer noch ein System zu verzeichnen und sie haben mich auf",
+     "B": "Ich habe mich nur gesagt als ein Internet von dem Internet von Japan und dem Computer von Japan und Japan zu tun hat sie mich auf dem Computer von der CIA zu tun und sie haben mich nicht mehr als ein paar Jahre lang gemacht hat und",
+     "level0": "Ich habe nur eine Frage auf die CIAische Regierung und die Welt hat mich immer mehr als die CIA zu tun und sie haben mich nicht mehr als die CIA zu tun und sie haben mich auf mich zu tun und sie sind immer mehr als"
+    },
+    {
+     "A": "Die Schnacken wird ein Scheißer und die Angst zu sein und sie werden sich auf den Kopf zu schützen und verstecken Sie sich auf den Kopf zu schützen und verstecken Sie sich auf den Kopf zu schützen und erschütt",
+     "B": "Der Kleider wird ein Verdächtigen gegen den Kopfschrauchte und die Angst zu sein und sie werden zu schützen und sich zu schützen und sich zu schützen und sicher zu sein zu sein und sie sind zu tun und sie sind",
+     "level0": "Der Scheißen wird ein Scheißer und die Angst zu sein und sie werden zu schützen und sich zu schützen und sich zu schützen und versicherten Sie sich auf den Kopf zu schützen und zu schützen und sich zu schützen und sicher"
+    },
+    {
+     "A": "Wir müssen uns helfen müssen und uns helfen müssen wir uns helfen müssen können können können können können können",
+     "B": "Wir haben uns helfen und uns helfen",
+     "level0": "Wir müssen uns helfen müssen und uns finden müssen wir uns finden müssen"
+    }
+   ],
+   "stack_progress": [
+    0.21635159850120544,
+    0.30851063829787234,
+    94
+   ],
+   "stack_keep_A": 0.840400218963623,
+   "control_progress": [
+    0.2632940709590912,
+    0.26595744680851063,
+    94
+   ],
+   "control_keep_A": 0.7657347917556763
+  },
+  {
+   "lang": "de",
+   "factor": "tense",
+   "direction": "B->A",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 2.0,
+   "identical_level0": 0.32,
+   "level0_progress": [
+    0.11721347272396088,
+    0.23404255319148937,
+    94
+   ],
+   "level0_keep_A": 0.8236991763114929,
+   "examples": [
+    {
+     "A": "The final report contained by Parliamentary Canada and Parliamentary Council Directive 1994/231 contained by Parliamentary Parliamentary Council members and Parliamentary Parliamentary Council members of Canada and Canada and Canada",
+     "B": "The final report contained by Canada Canada and Canada Canada Canada to report the Canadian Parliament on Canadian Statistics Canada and Canada Canada on the basis of the final reporting paper prepared by Canada and Canada Canada and Canada Canada Canada",
+     "level0": "The final report contained by Parliamentary Council Directive 2003/231 containing the following recommendations on the basis of the Canadian Parliamentary Council and Parliamentary Council documents for the final reporting period of the Canadian Parliament and the Council on"
+    },
+    {
+     "A": "My whole whole mission was over there",
+     "B": "My whole room is mine",
+     "level0": "I got everything upstaired up here"
+    },
+    {
+     "A": "I mean that I was doing a lot of computers from Japan because I had accessed my computer computers",
+     "B": "That means why I used to use the Internet computers and why did I use my computers and why they were using all the computers and computers from Japan and Japan where they were using their computers and computers are being",
+     "level0": "I used to explain why I was using computer software software software software software software software software"
+    },
+    {
+     "A": "Your leader will be threatened against your own head against your own head against his own head against his own head against his head against his head against his head against his head against his head against his head against his head against his head",
+     "B": "Your brother will be afraid to protect your own powers and fear them against your own heads and fears against them",
+     "level0": "Your fear is being threatened against your own head against your own head against your own heads"
+    },
+    {
+     "A": "We found ourselves to help us solve us",
+     "B": "We need to find ourselves to find solutions for our own problems",
+     "level0": "We found ourselves to help ourselves find solutions for our own help"
+    }
+   ],
+   "stack_progress": [
+    0.22669343650341034,
+    0.2872340425531915,
+    94
+   ],
+   "stack_keep_A": 0.8217880129814148,
+   "control_progress": [
+    0.1805942952632904,
+    0.20212765957446807,
+    94
+   ],
+   "control_keep_A": 0.7629680037498474
+  },
+  {
+   "lang": "de",
+   "factor": "tense",
+   "direction": "B->A",
+   "tgt": "de",
+   "n": 100,
+   "slots_changed_median": 2.0,
+   "identical_level0": 0.32,
+   "level0_progress": [
+    0.20879749953746796,
+    0.19148936170212766,
+    94
+   ],
+   "level0_keep_A": 0.8434221744537354,
+   "examples": [
+    {
+     "A": "Die Bericht über die Dokumente des Parlaments veröffentlicht wurden durch die Dokumente des Parlaments und der britischen Parlament veröffentlicht wordenen Bericht über die Dokumente des Parlaments und der britischen Parlament veröffentlicht worden sind und veröffentlicht werden können die",
+     "B": "Die Bericht über die Dokumente des Bundesministeriums und der britischen Parlament veröffentlichte die Bericht über die Dokumente des Parlaments und dem Parlament veröffentlicht werden können und veröffentlicht werden können die Bericht über die Aufnahme des Dokumentes für die Ver",
+     "level0": "Die Bericht über die Dokumente des Parlaments über die Dokumente des Parlaments und der britischen Parlament veröffentlicht wurden durch die Dokumente des Parlaments und der britischen Parlament veröffentlicht wordenen Bericht über die Verlängerung des Berichts"
+    },
+    {
+     "A": "Ich habe alle ganze Zeuge auf dem Bodenraum geschnitten",
+     "B": "Ich bin alles auf meinem Tischraum",
+     "level0": "Ich habe alles auf meinem Tischraum geschnitten"
+    },
+    {
+     "A": "Ich habe mich nur gesagt als ein Internet von dem Internet von Japan und dem Computer von Japan und Japan zu tun hat sie mich auf dem Computer von der CIA zu tun und sie haben mich nicht mehr als ein paar Jahre lang gemacht hat und",
+     "B": "Ich habe nur eine Frage auf die Website von Japan und Japan zu einem Computer von Googleen aus dem Internet von Google und Japan zu verzeichnen und sie sind immer noch immer noch immer noch ein System zu verzeichnen und sie haben mich auf",
+     "level0": "Ich habe nur eine Software von Computer und die Software von Computer und die Software von Computer und Softwaren ausgegeben hat sie mich auf dem Computer von Computer und dem Computer von Computer zu verzeichnen und sie haben mich nicht mehr als eingeschaltet"
+    },
+    {
+     "A": "Der Kleider wird ein Verdächtigen gegen den Kopfschrauchte und die Angst zu sein und sie werden zu schützen und sich zu schützen und sich zu schützen und sicher zu sein zu sein und sie sind zu tun und sie sind",
+     "B": "Die Schnacken wird ein Scheißer und die Angst zu sein und sie werden sich auf den Kopf zu schützen und verstecken Sie sich auf den Kopf zu schützen und verstecken Sie sich auf den Kopf zu schützen und erschütt",
+     "level0": "Die Knecken wird ein Verdächtigen gegen den Kopfschrauchter und der Schlachten von den Kleidern und der Schlachten von den Kleidern zu schützen und sich zu schützen und sich zu schützen und"
+    },
+    {
+     "A": "Wir haben uns helfen und uns helfen",
+     "B": "Wir müssen uns helfen müssen und uns helfen müssen wir uns helfen müssen können können können können können können",
+     "level0": "Wir haben einen eigenen Lösungen gefunden haben und wir haben uns helfen können und uns helfen können wir uns helfen können können können können und uns zu helfen können und uns zu helfen und uns zu helfen und uns zu helfen und uns zu helfen und dass"
+    }
+   ],
+   "stack_progress": [
+    0.2440660446882248,
+    0.30851063829787234,
+    94
+   ],
+   "stack_keep_A": 0.8385986089706421,
+   "control_progress": [
+    0.17693938314914703,
+    0.2127659574468085,
+    94
+   ],
+   "control_keep_A": 0.7698919177055359
+  },
+  {
+   "lang": "fr",
+   "factor": "negation",
+   "direction": "A->B",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 62.0,
+   "identical_level0": 0.15,
+   "neg_clean": 99,
+   "neg_decodable": 72,
+   "level0_progress": [
+    0.4608269929885864,
+    0.4444444444444444,
+    99
+   ],
+   "level0_keep_A": 0.6487012505531311,
+   "level0_flip": 0.6111111111111112,
+   "examples": [
+    {
+     "A": "You have everything you did everything you did",
+     "B": "You don ́t have any sense of doing things like you are doing nothing like you did",
+     "level0": "It doesn nothing but you don ́t have to do anything"
+    },
+    {
+     "A": "You mean it was a year ago when you tried to fight him out of jail",
+     "B": "Nobody said that you haven tried to stop 20 years ago before it was a little bit longer",
+     "level0": "You didn not want to stop doing this guy because you didn it for 30 years ago"
+    },
+    {
+     "A": "We call him home early morning and call him home immediately",
+     "B": "We will call him homeless homeless homeless homeless homeless",
+     "level0": "We will call Mary House immediately immediately home early morning"
+    },
+    {
+     "A": "If only they were born before their own hands were born by God and His servants were not able to eat them",
+     "B": "If you were born with the poor people of God would never be able to eat",
+     "level0": "If you were born without food without being allowed by the food without being born"
+    },
+    {
+     "A": "Each group will be divided into three groups each three points each matches each other three points",
+     "B": "Each group will be divided into three groups each three of three groups each three or three different groups",
+     "level0": "Each group will be divided into three groups each other three points each player will be able to play each other way together with each other three players"
+    }
+   ],
+   "stack_progress": [
+    0.7078670859336853,
+    0.6161616161616161,
+    99
+   ],
+   "stack_keep_A": 0.6731131076812744,
+   "stack_flip": 0.6944444444444444,
+   "control_progress": [
+    0.34633317589759827,
+    0.2727272727272727,
+    99
+   ],
+   "control_keep_A": 0.601422905921936,
+   "control_flip": 0.19444444444444445
+  },
+  {
+   "lang": "fr",
+   "factor": "negation",
+   "direction": "A->B",
+   "tgt": "fr",
+   "n": 100,
+   "slots_changed_median": 62.0,
+   "identical_level0": 0.15,
+   "neg_clean": 99,
+   "neg_decodable": 76,
+   "level0_progress": [
+    0.5123834311962128,
+    0.52,
+    100
+   ],
+   "level0_keep_A": 0.6376534700393677,
+   "level0_flip": 0.6710526315789473,
+   "examples": [
+    {
+     "A": "Tu as tout comme ça fait tout ça",
+     "B": "Vous n pouvez pas être tout comme une forme de choses",
+     "level0": "Il n fait rien tout pour tout ça"
+    },
+    {
+     "A": "Tu es juste fait ça que tu es un coup dâche depuis 30 ans avant que vous avez fait ça",
+     "B": "Non seulement je ne suis pas allé à faire ça avant que vous avez fait ça avant de 20 ans avant que vous avez fait ça",
+     "level0": "Tu n savaiais pas que tu n suis pas allé à faire ça pour toi qui était allé à faire çarir"
+    },
+    {
+     "A": "Je vais vous remercier à Mme Dakota et nous sommes prêtes à la maison et nous sommes prêtes à l maison",
+     "B": "Nous sommes venus à l maison et nous sommes venu chez nous appelons à Nashville à partir de notre maison",
+     "level0": "Nous sommes venu à l maison et nous sommes prêtes à l maison et nous sommes prêtes à l maison du village et nous sommes prêtes à l maison"
+    },
+    {
+     "A": "Si vous avez été tous les gens qui ne sont pas autorisées comme si vous avez été choisis comme une chose qui ne pouvait jamais être blessée pour manger",
+     "B": "Si vous n mangeez pas tous les pays qui ne pouvait pas être blessés pour manger",
+     "level0": "Si vous n croyaisez jamais tous les animaux qui ne pouvait jamais être blessés"
+    },
+    {
+     "A": "Chaque groupe peut être choisi par trois joueurs et trois joueurs qui suivent à trois joueurs",
+     "B": "Chaque groupe est trois joueurs qui sont trois joueurs et trois joueurs qui sont choisies dans trois joueurs et trois joueurs qui sont choisies dans trois joueurs",
+     "level0": "Chaque groupe peut être choisi par trois joueurs et trois joueurs qui suivent à trois joueurs qui veulent être choisies dans le jeu de trois joueurs"
+    }
+   ],
+   "stack_progress": [
+    0.8414338827133179,
+    0.66,
+    100
+   ],
+   "stack_keep_A": 0.6363480091094971,
+   "stack_flip": 0.7763157894736842,
+   "control_progress": [
+    0.31079429388046265,
+    0.26,
+    100
+   ],
+   "control_keep_A": 0.6071264743804932,
+   "control_flip": 0.3026315789473684
+  },
+  {
+   "lang": "fr",
+   "factor": "negation",
+   "direction": "B->A",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 62.0,
+   "identical_level0": 0.15,
+   "neg_clean": 99,
+   "neg_decodable": 72,
+   "level0_progress": [
+    0.47474023699760437,
+    0.48484848484848486,
+    99
+   ],
+   "level0_keep_A": 0.6786160469055176,
+   "level0_flip": 0.625,
+   "examples": [
+    {
+     "A": "You don ́t have any sense of doing things like you are doing nothing like you did",
+     "B": "You have everything you did everything you did",
+     "level0": "You just made yourself a whole step like you were doing everything like you are doing like you are doing"
+    },
+    {
+     "A": "Nobody said that you haven tried to stop 20 years ago before it was a little bit longer",
+     "B": "You mean it was a year ago when you tried to fight him out of jail",
+     "level0": "Now you haven sexed since 20 years ago"
+    },
+    {
+     "A": "We will call him homeless homeless homeless homeless homeless",
+     "B": "We call him home early morning and call him home immediately",
+     "level0": "We will call him homeless tomorrow morning and we won not return homeland immediately"
+    },
+    {
+     "A": "If you were born with the poor people of God would never be able to eat",
+     "B": "If only they were born before their own hands were born by God and His servants were not able to eat them",
+     "level0": "If they were forbidden for themselves except Allah would never be able to feed them except one another nation or another nation or another nation except them"
+    },
+    {
+     "A": "Each group will be divided into three groups each three of three groups each three or three different groups",
+     "B": "Each group will be divided into three groups each three points each matches each other three points",
+     "level0": "Each group will be divided into three groups each three or three different three groups each three or three others"
+    }
+   ],
+   "stack_progress": [
+    0.7573238015174866,
+    0.6868686868686869,
+    99
+   ],
+   "stack_keep_A": 0.6707371473312378,
+   "stack_flip": 0.7222222222222222,
+   "control_progress": [
+    0.30024564266204834,
+    0.25252525252525254,
+    99
+   ],
+   "control_keep_A": 0.6328714489936829,
+   "control_flip": 0.2777777777777778
+  },
+  {
+   "lang": "fr",
+   "factor": "negation",
+   "direction": "B->A",
+   "tgt": "fr",
+   "n": 100,
+   "slots_changed_median": 62.0,
+   "identical_level0": 0.15,
+   "neg_clean": 99,
+   "neg_decodable": 76,
+   "level0_progress": [
+    0.552729457616806,
+    0.57,
+    100
+   ],
+   "level0_keep_A": 0.6380366086959839,
+   "level0_flip": 0.7105263157894737,
+   "examples": [
+    {
+     "A": "Vous n pouvez pas être tout comme une forme de choses",
+     "B": "Tu as tout comme ça fait tout ça",
+     "level0": "Tu as tout comme ça comme ça fait partie de toi"
+    },
+    {
+     "A": "Non seulement je ne suis pas allé à faire ça avant que vous avez fait ça avant de 20 ans avant que vous avez fait ça",
+     "B": "Tu es juste fait ça que tu es un coup dâche depuis 30 ans avant que vous avez fait ça",
+     "level0": "Ceux qui ont été fait 30 ans avant que vous avez fait ça avant de faire ça avant que vous avez fait çarir"
+    },
+    {
+     "A": "Nous sommes venus à l maison et nous sommes venu chez nous appelons à Nashville à partir de notre maison",
+     "B": "Je vais vous remercier à Mme Dakota et nous sommes prêtes à la maison et nous sommes prêtes à l maison",
+     "level0": "Nous sommes venus à Washington et nous sommes venu chez nous appelons à Nashville et nous sommes prêtes à partir de notre retourne"
+    },
+    {
+     "A": "Si vous n mangeez pas tous les pays qui ne pouvait pas être blessés pour manger",
+     "B": "Si vous avez été tous les gens qui ne sont pas autorisées comme si vous avez été choisis comme une chose qui ne pouvait jamais être blessée pour manger",
+     "level0": "Si vous avez été tous les gens qui ne sont pas en plus riche pour manger les gens qui ont été blessés à manger"
+    },
+    {
+     "A": "Chaque groupe est trois joueurs qui sont trois joueurs et trois joueurs qui sont choisies dans trois joueurs et trois joueurs qui sont choisies dans trois joueurs",
+     "B": "Chaque groupe peut être choisi par trois joueurs et trois joueurs qui suivent à trois joueurs",
+     "level0": "Chaque groupe est trois joueurs qui suivent trois joueurs et trois joueurs qui sont trois joueurs et trois joueurs"
+    }
+   ],
+   "stack_progress": [
+    0.7513953149318695,
+    0.67,
+    100
+   ],
+   "stack_keep_A": 0.6324320435523987,
+   "stack_flip": 0.7763157894736842,
+   "control_progress": [
+    0.34734608232975006,
+    0.35,
+    100
+   ],
+   "control_keep_A": 0.5886088609695435,
+   "control_flip": 0.3815789473684211
+  },
+  {
+   "lang": "fr",
+   "factor": "tense",
+   "direction": "A->B",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 3.0,
+   "identical_level0": 0.24,
+   "level0_progress": [
+    0.14742973446846008,
+    0.18556701030927836,
+    97
+   ],
+   "level0_keep_A": 0.8096916079521179,
+   "examples": [
+    {
+     "A": "And you know why you don ́t get out of here because you are here",
+     "B": "And you weren here because I didn not get caught up here",
+     "level0": "And you don ́t know why I am not here because you weren here"
+    },
+    {
+     "A": "Many scientists are scientists who are scientists and scientists are being exposed by scientists and scientists",
+     "B": "Many men were scientists who were working in science fictions",
+     "level0": "Many scientists are scientists who are scientists"
+    },
+    {
+     "A": "We only have to protect ourselves because we were able to protect our own powers",
+     "B": "We only have to protect ourselves against men who were hunting us",
+     "level0": "We only have to protect ourselves because we were able to protect our own powers"
+    },
+    {
+     "A": "It is very easy to keep her own own style in the same way to protect her own own own style",
+     "B": "She was a perfect one of the most beautiful style than she was not able to be able to be able to be able to be a perfect one of the most beautiful ones",
+     "level0": "She is very proud to keep her own own own style in the same way to keep her own own own own own style"
+    },
+    {
+     "A": "We must give everyone else to answer this time",
+     "B": "I promised every chance to give everyone else to give up everything else",
+     "level0": "We must give everyone else to answer this time"
+    }
+   ],
+   "stack_progress": [
+    0.392013818025589,
+    0.44329896907216493,
+    97
+   ],
+   "stack_keep_A": 0.7740222215652466,
+   "control_progress": [
+    0.233171284198761,
+    0.20618556701030927,
+    97
+   ],
+   "control_keep_A": 0.7133903503417969
+  },
+  {
+   "lang": "fr",
+   "factor": "tense",
+   "direction": "A->B",
+   "tgt": "fr",
+   "n": 100,
+   "slots_changed_median": 3.0,
+   "identical_level0": 0.24,
+   "level0_progress": [
+    0.24767425656318665,
+    0.2828282828282828,
+    99
+   ],
+   "level0_keep_A": 0.8075648546218872,
+   "examples": [
+    {
+     "A": "Et tu sais ce que tu ne fais pas ici ici",
+     "B": "Et tu n sais pas là où tu n suis pas là dans la rue",
+     "level0": "Et je ne suis pas là où tu ne suis pas là ici"
+    },
+    {
+     "A": "Les scientifiques sont très humains et scientifiques qui sont menées dans les sciences humaines et des sciences humaines sont menés dans leur vieilleur",
+     "B": "Les gens ont été menées dans leur vieilleur et ils ont été menés dans leur vieilleur",
+     "level0": "Les scientifiques sont menées et scientifiques de science humaines sont menés dans leur vieilleur"
+    },
+    {
+     "A": "Nous avons besoin de protéger notre propre peuple qui nous nous sommes tous les ennemiss qui nous ont été dégagésés par notre propre peuple",
+     "B": "Nous avons besoin de nous faire preuve pour nous protéger notre homme qui nous nous sommes tous les hommes qui nous ont été menés",
+     "level0": "Nous avons besoin de protéger notre propre peuple qui nous nous sommes tous les ennemiss qui nous ont été dégagésés par notre propre peuple"
+    },
+    {
+     "A": "Elle est très beau style qui ne veut pas être plus puissante comme une autre chose comme une autre chose de beauté",
+     "B": "Elle était une seule chose qui n pouvait pas être très bien placée comme une petite beauté de beauté et sans forme de style",
+     "level0": "Elle est très beau type de la beauté de la beauté de la beauté de la beauté de la beauté de la rueine et elle ne veut pas être plus beau"
+    },
+    {
+     "A": "Nous avons besoin de tout ce qu nous avons besoin de nous faire preuve",
+     "B": "Je dois dire que je dois faire une chance pour chaque chose",
+     "level0": "Nous avons besoin de tout ce qu nous avons besoin de nous faire preuve"
+    }
+   ],
+   "stack_progress": [
+    0.27292752265930176,
+    0.3838383838383838,
+    99
+   ],
+   "stack_keep_A": 0.8007272481918335,
+   "control_progress": [
+    0.2789575457572937,
+    0.26262626262626265,
+    99
+   ],
+   "control_keep_A": 0.7244915962219238
+  },
+  {
+   "lang": "fr",
+   "factor": "tense",
+   "direction": "B->A",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 3.0,
+   "identical_level0": 0.24,
+   "level0_progress": [
+    0.16455218195915222,
+    0.27835051546391754,
+    97
+   ],
+   "level0_keep_A": 0.7850137948989868,
+   "examples": [
+    {
+     "A": "And you weren here because I didn not get caught up here",
+     "B": "And you know why you don ́t get out of here because you are here",
+     "level0": "And you know what you were doing here in here with your asshole"
+    },
+    {
+     "A": "Many men were scientists who were working in science fictions",
+     "B": "Many scientists are scientists who are scientists and scientists are being exposed by scientists and scientists",
+     "level0": "Many scientists were looking at these scientists and scientists were working together"
+    },
+    {
+     "A": "We only have to protect ourselves against men who were hunting us",
+     "B": "We only have to protect ourselves because we were able to protect our own powers",
+     "level0": "We only have to protect ourselves against men who were hunting us"
+    },
+    {
+     "A": "She was a perfect one of the most beautiful style than she was not able to be able to be able to be able to be a perfect one of the most beautiful ones",
+     "B": "It is very easy to keep her own own style in the same way to protect her own own own style",
+     "level0": "She was a perfect woman who was born with her own own style and was not perfect"
+    },
+    {
+     "A": "I promised every chance to give everyone else to give up everything else",
+     "B": "We must give everyone else to answer this time",
+     "level0": "I promised every chance to give everyone else to give up everything else"
+    }
+   ],
+   "stack_progress": [
+    0.2678162157535553,
+    0.3402061855670103,
+    97
+   ],
+   "stack_keep_A": 0.7797099351882935,
+   "control_progress": [
+    0.2540168762207031,
+    0.24742268041237114,
+    97
+   ],
+   "control_keep_A": 0.7195909023284912
+  },
+  {
+   "lang": "fr",
+   "factor": "tense",
+   "direction": "B->A",
+   "tgt": "fr",
+   "n": 100,
+   "slots_changed_median": 3.0,
+   "identical_level0": 0.24,
+   "level0_progress": [
+    0.15358221530914307,
+    0.1919191919191919,
+    99
+   ],
+   "level0_keep_A": 0.8095622062683105,
+   "examples": [
+    {
+     "A": "Et tu n sais pas là où tu n suis pas là dans la rue",
+     "B": "Et tu sais ce que tu ne fais pas ici ici",
+     "level0": "Et tu sais ce que tu es là dans la cabine"
+    },
+    {
+     "A": "Les gens ont été menées dans leur vieilleur et ils ont été menés dans leur vieilleur",
+     "B": "Les scientifiques sont très humains et scientifiques qui sont menées dans les sciences humaines et des sciences humaines sont menés dans leur vieilleur",
+     "level0": "Les gens ont été menées dans leur vieilleur et ils ont été menés dans leur vieilleur"
+    },
+    {
+     "A": "Nous avons besoin de nous faire preuve pour nous protéger notre homme qui nous nous sommes tous les hommes qui nous ont été menés",
+     "B": "Nous avons besoin de protéger notre propre peuple qui nous nous sommes tous les ennemiss qui nous ont été dégagésés par notre propre peuple",
+     "level0": "Nous avons besoin de nous faire preuve pour nous protéger notre homme qui nous nous sommes tous les hommes qui nous ont été menés"
+    },
+    {
+     "A": "Elle était une seule chose qui n pouvait pas être très bien placée comme une petite beauté de beauté et sans forme de style",
+     "B": "Elle est très beau style qui ne veut pas être plus puissante comme une autre chose comme une autre chose de beauté",
+     "level0": "Elle était une petite beauté qui n pouvait pas être très simple et sans forme dâcher dans la mainité de la beauté et elle n pouvait pas être plus facile à faire facer les femmes qui ont été très bien humains"
+    },
+    {
+     "A": "Je dois dire que je dois faire une chance pour chaque chose",
+     "B": "Nous avons besoin de tout ce qu nous avons besoin de nous faire preuve",
+     "level0": "Je dois dire que je dois faire une chance pour chaque chose"
+    }
+   ],
+   "stack_progress": [
+    0.3449205458164215,
+    0.41414141414141414,
+    99
+   ],
+   "stack_keep_A": 0.8099049925804138,
+   "control_progress": [
+    0.26590925455093384,
+    0.24242424242424243,
+    99
+   ],
+   "control_keep_A": 0.6874010562896729
+  },
+  {
+   "lang": "es",
+   "factor": "negation",
+   "direction": "A->B",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 54.5,
+   "identical_level0": 0.17,
+   "neg_clean": 96,
+   "neg_decodable": 58,
+   "level0_progress": [
+    0.4530310034751892,
+    0.4387755102040816,
+    98
+   ],
+   "level0_keep_A": 0.6960544586181641,
+   "level0_flip": 0.603448275862069,
+   "examples": [
+    {
+     "A": "They all got it all done",
+     "B": "They didn nothing wrong with this stuff",
+     "level0": "They didn nothing wrong with this stuff"
+    },
+    {
+     "A": "Charlie is going to bed every minute in the car park with his car and then he goes downstair on his car every door",
+     "B": "Charlie is dead with his car and then he goes through his car and then he went through his car and then walk around here with his car and then he goes downstair on his own feet and then he went through his car and",
+     "level0": "Charlie is going to bed every minute in the car park with his car and then he goes down to bed every minute in his car every minute"
+    },
+    {
+     "A": "Some people know what they have secret secrets",
+     "B": "Some people have secret secret secrets without secret secrets",
+     "level0": "Some secret secrets have been secretly protected by secret secrets"
+    },
+    {
+     "A": "We really have been very long with Michael now",
+     "B": "We haven long enough time since we met him",
+     "level0": "We have been really much about Michael now"
+    },
+    {
+     "A": "His deepestness is dead from the West Coastian Ocean",
+     "B": "Mr Langley is dead outside the border",
+     "level0": "His deepestness is dead from the West Coastian Ocean"
+    }
+   ],
+   "stack_progress": [
+    0.7030162215232849,
+    0.6326530612244898,
+    98
+   ],
+   "stack_keep_A": 0.6738737225532532,
+   "stack_flip": 0.6896551724137931,
+   "control_progress": [
+    0.34143853187561035,
+    0.3163265306122449,
+    98
+   ],
+   "control_keep_A": 0.6435174345970154,
+   "control_flip": 0.3275862068965517
+  },
+  {
+   "lang": "es",
+   "factor": "negation",
+   "direction": "A->B",
+   "tgt": "es",
+   "n": 100,
+   "slots_changed_median": 54.5,
+   "identical_level0": 0.17,
+   "neg_clean": 96,
+   "neg_decodable": 64,
+   "level0_progress": [
+    0.47299501299858093,
+    0.4742268041237113,
+    97
+   ],
+   "level0_keep_A": 0.6897711753845215,
+   "level0_flip": 0.609375,
+   "examples": [
+    {
+     "A": "Todo lo hizo esto todo esto",
+     "B": "Los chicos no han hecho nada",
+     "level0": "Todo lo que ha hecho esto"
+    },
+    {
+     "A": "El hombre está en el coche de Charleston y el coche está en el coche del vehículo y el coche del vehículo británico y el hombre está muerto por el lado de la cama de la calle y el cuerpo de la calle y el coche",
+     "B": "El hombre está en el suelo y el cuerpo de Charleston está muerto por el cuerpo y el cuerpo está muerto por ahí mismo tiempo de dormir en el cuerpo y el cuerpo del cuerpo del cuerpo británico y el hombre que se encuentran en el",
+     "level0": "El hombre murió por el cuerpo y el hombre se puede quedarse en el coche y se puede dormir con él mismo tiempo de dormir en el coche del vehículo y el agua de la cama de Londres y luego se encuentran en el mismo"
+    },
+    {
+     "A": "Algunos secretos son muy secretos y secretos secretos",
+     "B": "Algunos secretos son secretos y secretos privados privados y privados privados",
+     "level0": "Algunos secretos son secretos secretos y secretos secretos secretos"
+    },
+    {
+     "A": "Ya sabemos mucho tiempo de Michael y yo hemos pasado mucho tiempo",
+     "B": "Ya sabemos que no tenemos mucho tiempo",
+     "level0": "Ya sabemos mucho tiempo de Michael y yo nos hemos estado con nosotros"
+    },
+    {
+     "A": "El fantasma de la muerte del Sr Langtonton",
+     "B": "El Sr Langley está bajo el silencioso del Sr Langley",
+     "level0": "El fantasma de la muerte del Sr Langtonton"
+    }
+   ],
+   "stack_progress": [
+    0.6808589696884155,
+    0.5567010309278351,
+    97
+   ],
+   "stack_keep_A": 0.7141047120094299,
+   "stack_flip": 0.703125,
+   "control_progress": [
+    0.3459272086620331,
+    0.28865979381443296,
+    97
+   ],
+   "control_keep_A": 0.6576095819473267,
+   "control_flip": 0.359375
+  },
+  {
+   "lang": "es",
+   "factor": "negation",
+   "direction": "B->A",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 54.5,
+   "identical_level0": 0.17,
+   "neg_clean": 96,
+   "neg_decodable": 58,
+   "level0_progress": [
+    0.32195283472537994,
+    0.3163265306122449,
+    98
+   ],
+   "level0_keep_A": 0.713151216506958,
+   "level0_flip": 0.6206896551724138,
+   "examples": [
+    {
+     "A": "They didn nothing wrong with this stuff",
+     "B": "They all got it all done",
+     "level0": "They made it all over this process"
+    },
+    {
+     "A": "Charlie is dead with his car and then he goes through his car and then he went through his car and then walk around here with his car and then he goes downstair on his own feet and then he went through his car and",
+     "B": "Charlie is going to bed every minute in the car park with his car and then he goes downstair on his car every door",
+     "level0": "Charlie is dead with a car in the car and then he goes downstair at the same time and then he goes downstairly downstairly on his own side floor"
+    },
+    {
+     "A": "Some people have secret secret secrets without secret secrets",
+     "B": "Some people know what they have secret secrets",
+     "level0": "Some people have secret powers and secret secretly secretly"
+    },
+    {
+     "A": "We haven long enough time since we met him",
+     "B": "We really have been very long with Michael now",
+     "level0": "We haven long since we met him out there"
+    },
+    {
+     "A": "Mr Langley is dead outside the border",
+     "B": "His deepestness is dead from the West Coastian Ocean",
+     "level0": "Mr Langley is dead outside the border"
+    }
+   ],
+   "stack_progress": [
+    0.5711678266525269,
+    0.5408163265306123,
+    98
+   ],
+   "stack_keep_A": 0.7042742371559143,
+   "stack_flip": 0.6896551724137931,
+   "control_progress": [
+    0.24862821400165558,
+    0.1326530612244898,
+    98
+   ],
+   "control_keep_A": 0.6723625063896179,
+   "control_flip": 0.20689655172413793
+  },
+  {
+   "lang": "es",
+   "factor": "negation",
+   "direction": "B->A",
+   "tgt": "es",
+   "n": 100,
+   "slots_changed_median": 54.5,
+   "identical_level0": 0.17,
+   "neg_clean": 96,
+   "neg_decodable": 64,
+   "level0_progress": [
+    0.4833359718322754,
+    0.4742268041237113,
+    97
+   ],
+   "level0_keep_A": 0.6888471841812134,
+   "level0_flip": 0.640625,
+   "examples": [
+    {
+     "A": "Los chicos no han hecho nada",
+     "B": "Todo lo hizo esto todo esto",
+     "level0": "Los han hecho todo esto"
+    },
+    {
+     "A": "El hombre está en el suelo y el cuerpo de Charleston está muerto por el cuerpo y el cuerpo está muerto por ahí mismo tiempo de dormir en el cuerpo y el cuerpo del cuerpo del cuerpo británico y el hombre que se encuentran en el",
+     "B": "El hombre está en el coche de Charleston y el coche está en el coche del vehículo y el coche del vehículo británico y el hombre está muerto por el lado de la cama de la calle y el cuerpo de la calle y el coche",
+     "level0": "El hombre está en el coche y el vehículo de Charleston está muerto por ahí por ahí mismo tiempo de dormir en el baño del cuerpo"
+    },
+    {
+     "A": "Algunos secretos son secretos y secretos privados privados y privados privados",
+     "B": "Algunos secretos son muy secretos y secretos secretos",
+     "level0": "Algunos secretos son muy valiosos y más valiosos para proteger sus secretos"
+    },
+    {
+     "A": "Ya sabemos que no tenemos mucho tiempo",
+     "B": "Ya sabemos mucho tiempo de Michael y yo hemos pasado mucho tiempo",
+     "level0": "Lo sé mucho tiempo desde hace mucho tiempo"
+    },
+    {
+     "A": "El Sr Langley está bajo el silencioso del Sr Langley",
+     "B": "El fantasma de la muerte del Sr Langtonton",
+     "level0": "El Sr Langley está bajo el silencioso del Sr Langley"
+    }
+   ],
+   "stack_progress": [
+    0.7387861013412476,
+    0.6185567010309279,
+    97
+   ],
+   "stack_keep_A": 0.701915979385376,
+   "stack_flip": 0.78125,
+   "control_progress": [
+    0.30172574520111084,
+    0.21649484536082475,
+    97
+   ],
+   "control_keep_A": 0.6445786356925964,
+   "control_flip": 0.328125
+  },
+  {
+   "lang": "es",
+   "factor": "tense",
+   "direction": "A->B",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 5.5,
+   "identical_level0": 0.24,
+   "level0_progress": [
+    0.28541433811187744,
+    0.31,
+    100
+   ],
+   "level0_keep_A": 0.7545629739761353,
+   "examples": [
+    {
+     "A": "I don ́t know where he went here yet he came here yet he came here yet he went out there yet",
+     "B": "I didn not know where he came here before he came here before he came here",
+     "level0": "I haven no idea where he came here yet he went out there yet"
+    },
+    {
+     "A": "It is important that the political situation is always being taken by political leaders and political leaders in order to protect themselves in order to protect themselves in order to protect themselves in order to protect themselves in order to protect themselves in order to protect themselves",
+     "B": "In fact that the political situation was very important to be given by the political forces in order to protect the political forces of the country concerned and threatened by the political forces of the country of the country concerned during the period of October",
+     "level0": "It is important that the political situation is always being taken by political leaders and political leaders in order to protect themselves in order to protect themselves in order to protect themselves in order to protect themselves in order to protect themselves in order to protect themselves"
+    },
+    {
+     "A": "It looks like a great hunger in the stomach",
+     "B": "I thought it was a very nice hunger",
+     "level0": "It looks like a great hunger in the stomach"
+    },
+    {
+     "A": "My clothes are covered in my room with my clothes",
+     "B": "My room was my clothes in my room",
+     "level0": "My clothes are covered in my pocket room"
+    },
+    {
+     "A": "I am here for my son of mine",
+     "B": "He found me here for my son of mine",
+     "level0": "I am here for my son of mine"
+    }
+   ],
+   "stack_progress": [
+    0.4380268454551697,
+    0.45,
+    100
+   ],
+   "stack_keep_A": 0.7370038032531738,
+   "control_progress": [
+    0.25735369324684143,
+    0.22,
+    100
+   ],
+   "control_keep_A": 0.6886518001556396
+  },
+  {
+   "lang": "es",
+   "factor": "tense",
+   "direction": "A->B",
+   "tgt": "es",
+   "n": 100,
+   "slots_changed_median": 5.5,
+   "identical_level0": 0.24,
+   "level0_progress": [
+    0.3372770994901657,
+    0.3469387755102041,
+    98
+   ],
+   "level0_keep_A": 0.8004517555236816,
+   "examples": [
+    {
+     "A": "No sé dónde estaba aquí en el lugar donde estaba aquí",
+     "B": "No sabía que estaba aquí en el lugar donde estaba aquí",
+     "level0": "No estoy segurando hasta aquí hasta que estaba aquí en el lugar donde estaba aquí"
+    },
+    {
+     "A": "Es importante que el gobierno ha sido muy preocupado por el poder de mantener sus intereses y responsabilidads sociales y políticos políticos y políticos políticos y políticos políticos políticos y políticos políticos políticos y políticos políticos políticos y políticos políticos políticos y políticos políticos políticos",
+     "B": "En efecto más importante de la política de seguridad y la seguridad de la sociedad civil era una mayor razón importante de que el gobierno ha sido muy preocupado por el poder de poder de poder ser más importante para proteger sus intereses y seguridad de",
+     "level0": "Es importante que el gobierno ha sido muy preocupado por el poder de mantener sus intereses y responsabilidads sociales y políticos políticos y políticos políticos y políticos políticos políticos y políticos políticos políticos y políticos políticos políticos y políticos políticos políticos y políticos políticos políticos"
+    },
+    {
+     "A": "Es muy bueno que el hombre está muy bien muy bien caliente",
+     "B": "Me parece muy bien una gran sonrisa de gran tamaño de la botella",
+     "level0": "Es muy bueno que el hombre está muy bien muy bien caliente"
+    },
+    {
+     "A": "El mamá está en su casa y su ropa está cambiando en mi interior",
+     "B": "Mi mamá estaba en mi casa y mi ropa estaba en mi casa",
+     "level0": "Mi ropa está en su interior y el restodor está cambiando en mi interior"
+    },
+    {
+     "A": "Estoy aquí en mi hijo aquí",
+     "B": "Estaba aquí para mi hijo aquí",
+     "level0": "Es mi hijo aquí donde está aquí"
+    }
+   ],
+   "stack_progress": [
+    0.4751911163330078,
+    0.46938775510204084,
+    98
+   ],
+   "stack_keep_A": 0.79997718334198,
+   "control_progress": [
+    0.24670232832431793,
+    0.21428571428571427,
+    98
+   ],
+   "control_keep_A": 0.7250692248344421
+  },
+  {
+   "lang": "es",
+   "factor": "tense",
+   "direction": "B->A",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 5.5,
+   "identical_level0": 0.24,
+   "level0_progress": [
+    0.29428671300411224,
+    0.3,
+    100
+   ],
+   "level0_keep_A": 0.7668614983558655,
+   "examples": [
+    {
+     "A": "I didn not know where he came here before he came here before he came here",
+     "B": "I don ́t know where he went here yet he came here yet he came here yet he went out there yet",
+     "level0": "I didn not know where he came here before he came here before he came here"
+    },
+    {
+     "A": "In fact that the political situation was very important to be given by the political forces in order to protect the political forces of the country concerned and threatened by the political forces of the country of the country concerned during the period of October",
+     "B": "It is important that the political situation is always being taken by political leaders and political leaders in order to protect themselves in order to protect themselves in order to protect themselves in order to protect themselves in order to protect themselves in order to protect themselves",
+     "level0": "In fact that the political situation was very important to be given by the political forces in order to protect the political forces of the country concerned and threatened by the political forces of the country of the country concerned during the period of October"
+    },
+    {
+     "A": "I thought it was a very nice hunger",
+     "B": "It looks like a great hunger in the stomach",
+     "level0": "I thought it was a very nice hunger"
+    },
+    {
+     "A": "My room was my clothes in my room",
+     "B": "My clothes are covered in my room with my clothes",
+     "level0": "My room was my clothes in my room"
+    },
+    {
+     "A": "He found me here for my son of mine",
+     "B": "I am here for my son of mine",
+     "level0": "I found him here for my son of mine"
+    }
+   ],
+   "stack_progress": [
+    0.48253799974918365,
+    0.48,
+    100
+   ],
+   "stack_keep_A": 0.7374846935272217,
+   "control_progress": [
+    0.2941288948059082,
+    0.24,
+    100
+   ],
+   "control_keep_A": 0.7004754543304443
+  },
+  {
+   "lang": "es",
+   "factor": "tense",
+   "direction": "B->A",
+   "tgt": "es",
+   "n": 100,
+   "slots_changed_median": 5.5,
+   "identical_level0": 0.24,
+   "level0_progress": [
+    0.14613576233386993,
+    0.32653061224489793,
+    98
+   ],
+   "level0_keep_A": 0.8342990279197693,
+   "examples": [
+    {
+     "A": "No sabía que estaba aquí en el lugar donde estaba aquí",
+     "B": "No sé dónde estaba aquí en el lugar donde estaba aquí",
+     "level0": "No sé dónde estaba aquí en el lugar donde estaba aquí"
+    },
+    {
+     "A": "En efecto más importante de la política de seguridad y la seguridad de la sociedad civil era una mayor razón importante de que el gobierno ha sido muy preocupado por el poder de poder de poder ser más importante para proteger sus intereses y seguridad de",
+     "B": "Es importante que el gobierno ha sido muy preocupado por el poder de mantener sus intereses y responsabilidads sociales y políticos políticos y políticos políticos y políticos políticos políticos y políticos políticos políticos y políticos políticos políticos y políticos políticos políticos y políticos políticos políticos",
+     "level0": "En efecto más importante de la política de seguridad y la seguridad de la sociedad civil era una mayor razón importante de que el gobierno ha sido muy preocupado por el poder de poder de poder ser más importante para proteger sus intereses y seguridad de"
+    },
+    {
+     "A": "Me parece muy bien una gran sonrisa de gran tamaño de la botella",
+     "B": "Es muy bueno que el hombre está muy bien muy bien caliente",
+     "level0": "Me parece muy bien una gran sonrisa de gran tamaño de la botella"
+    },
+    {
+     "A": "Mi mamá estaba en mi casa y mi ropa estaba en mi casa",
+     "B": "El mamá está en su casa y su ropa está cambiando en mi interior",
+     "level0": "Mi mamá estaba en mi casa y mi ropa estaba en mi casa"
+    },
+    {
+     "A": "Estaba aquí para mi hijo aquí",
+     "B": "Estoy aquí en mi hijo aquí",
+     "level0": "Estaba aquí para mi hijo aquí"
+    }
+   ],
+   "stack_progress": [
+    0.3492363393306732,
+    0.3979591836734694,
+    98
+   ],
+   "stack_keep_A": 0.8188313841819763,
+   "control_progress": [
+    0.28992319107055664,
+    0.25510204081632654,
+    98
+   ],
+   "control_keep_A": 0.7223309874534607
+  },
+  {
+   "lang": "ru",
+   "factor": "negation",
+   "direction": "A->B",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 16.5,
+   "identical_level0": 0.22,
+   "neg_clean": 98,
+   "neg_decodable": 66,
+   "level0_progress": [
+    0.43260687589645386,
+    0.422680412371134,
+    97
+   ],
+   "level0_keep_A": 0.690598726272583,
+   "level0_flip": 0.5,
+   "examples": [
+    {
+     "A": "You should stay staying for bed",
+     "B": "You shouldn stay with your bed without having dinner right now",
+     "level0": "You shouldn stay with him alone"
+    },
+    {
+     "A": "Captain Fisheries are active owners in the boatboard team",
+     "B": "Captain Fisheries are not ready to meet Captain Fisheries",
+     "level0": "Captain Fisheries are actively actively actively participating fishery team"
+    },
+    {
+     "A": "We have taken every effort to achieve the objective of six years ago as possible as possible as possible as possible as possible as possible as possible as possible as possible goals of action planbooks and priorities for the implementation of the Millennium Development Go",
+     "B": "We had no plans planned for six years without targeting target",
+     "level0": "He was planning that seven years ago had been completed without a plan plan plan"
+    },
+    {
+     "A": "After his brother was killed after his brother brother brother brother after his death brother was killed by his brother brother brother brother brother and his brother brother brother brother brother brother brother brother and his brother brother brother brother brother brother brother brother was killed by",
+     "B": "After his death was killed by his brother brother brother Josephson after his death was killed by his brother brother brother brother brother and his brother brother brother brother brother brother brother and his brother brother brother brother brother brother was killed by his brother brother",
+     "level0": "After his brother died after his brother died brother and his brother was killed by his brother brother brother brother brother and his brother brother brother brother brother brother killed his brother brother brother brother brother and his brother brother brother brother brother brother brother"
+    },
+    {
+     "A": "If you can handle your asshole",
+     "B": "If you don ́t get her back to bed right now",
+     "level0": "If you can handle your asshole"
+    }
+   ],
+   "stack_progress": [
+    0.6695235371589661,
+    0.5979381443298969,
+    97
+   ],
+   "stack_keep_A": 0.6882596611976624,
+   "stack_flip": 0.6363636363636364,
+   "control_progress": [
+    0.33884984254837036,
+    0.25773195876288657,
+    97
+   ],
+   "control_keep_A": 0.6684324145317078,
+   "control_flip": 0.24242424242424243
+  },
+  {
+   "lang": "ru",
+   "factor": "negation",
+   "direction": "A->B",
+   "tgt": "ru",
+   "n": 100,
+   "slots_changed_median": 16.5,
+   "identical_level0": 0.22,
+   "neg_clean": 98,
+   "neg_decodable": 72,
+   "level0_progress": [
+    0.4218403100967407,
+    0.4020618556701031,
+    97
+   ],
+   "level0_keep_A": 0.7348480224609375,
+   "level0_flip": 0.4722222222222222,
+   "examples": [
+    {
+     "A": "Тебе должно быть здесь в постели",
+     "B": "Я бы не должна быть спать в этом месте",
+     "level0": "Я бы не должна был быть там оставить тебя"
+    },
+    {
+     "A": "Капитан Санта и Санта в Сантосской команды Сантаи и Сантая",
+     "B": "Капитан Санта не будет в команде с капитаном и капитаном в Сантоке",
+     "level0": "Капитан Санта и Санта в Сантох в океане в океане"
+    },
+    {
+     "A": "Мы должны принять все необходимые меры для того чтобы добиться того как можно было решено в этом году в течение пяти лет назад",
+     "B": "Мы не были приняты планы на шесть лет до конца года",
+     "level0": "Я не смог позволить ему решить семь месяцев в плане планирования планаа действий в области прав человека"
+    },
+    {
+     "A": "После того как он был убита в том числе в возрасте в возрасте в возрасте от своего годах братской братской братской братской братской братской братской братской Реджики и его сыном в возрасте в возрасте",
+     "B": "После того как он был убита в том числе в возрасте от своего брата и его братской братской братской братской Реббис в его возрасте в течение трех лет после того как он был убита в его братской",
+     "level0": "После того как его брат был убитым братом и его братом с братом и его братом и его братом умерла его в его брате и его братом и его братом и его братом и его брат"
+    },
+    {
+     "A": "Если ты можешь убить Кейт Уиллина",
+     "B": "Если ты не можешь убить Кейт Уиллил",
+     "level0": "Если ты можешь убить Кейт Уиллина"
+    }
+   ],
+   "stack_progress": [
+    0.6617553234100342,
+    0.5979381443298969,
+    97
+   ],
+   "stack_keep_A": 0.7039633393287659,
+   "stack_flip": 0.6111111111111112,
+   "control_progress": [
+    0.23959818482398987,
+    0.24742268041237114,
+    97
+   ],
+   "control_keep_A": 0.7138774991035461,
+   "control_flip": 0.2916666666666667
+  },
+  {
+   "lang": "ru",
+   "factor": "negation",
+   "direction": "B->A",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 16.5,
+   "identical_level0": 0.22,
+   "neg_clean": 98,
+   "neg_decodable": 66,
+   "level0_progress": [
+    0.3186454176902771,
+    0.32989690721649484,
+    97
+   ],
+   "level0_keep_A": 0.717896580696106,
+   "level0_flip": 0.4393939393939394,
+   "examples": [
+    {
+     "A": "You shouldn stay with your bed without having dinner right now",
+     "B": "You should stay staying for bed",
+     "level0": "You should stay late tonight"
+    },
+    {
+     "A": "Captain Fisheries are not ready to meet Captain Fisheries",
+     "B": "Captain Fisheries are active owners in the boatboard team",
+     "level0": "Captain Fishery is here to meet Captain Fisheries"
+    },
+    {
+     "A": "We had no plans planned for six years without targeting target",
+     "B": "We have taken every effort to achieve the objective of six years ago as possible as possible as possible as possible as possible as possible as possible as possible as possible goals of action planbooks and priorities for the implementation of the Millennium Development Go",
+     "level0": "We have been able to achieve our goals on six years and we have decided to achieve our objectives and priorities in order to achieve our goals and priorities of our goals and priorities in order to achieve our goals and priorities"
+    },
+    {
+     "A": "After his death was killed by his brother brother brother Josephson after his death was killed by his brother brother brother brother brother and his brother brother brother brother brother brother brother and his brother brother brother brother brother brother was killed by his brother brother",
+     "B": "After his brother was killed after his brother brother brother brother after his death brother was killed by his brother brother brother brother brother and his brother brother brother brother brother brother brother brother and his brother brother brother brother brother brother brother brother was killed by",
+     "level0": "After his last brother was killed by his brother Alexander Joseph and his brother brother brother brother brother brother was killed by his brother brother brother brother brother and his brother brother brother brother brother brother brother brother and his brother brother brother brother brother brother brother"
+    },
+    {
+     "A": "If you don ́t get her back to bed right now",
+     "B": "If you can handle your asshole",
+     "level0": "If you don ́t get her back to bed right now"
+    }
+   ],
+   "stack_progress": [
+    0.6000038981437683,
+    0.5670103092783505,
+    97
+   ],
+   "stack_keep_A": 0.6812065243721008,
+   "stack_flip": 0.6515151515151515,
+   "control_progress": [
+    0.31749099493026733,
+    0.26804123711340205,
+    97
+   ],
+   "control_keep_A": 0.6658415198326111,
+   "control_flip": 0.18181818181818182
+  },
+  {
+   "lang": "ru",
+   "factor": "negation",
+   "direction": "B->A",
+   "tgt": "ru",
+   "n": 100,
+   "slots_changed_median": 16.5,
+   "identical_level0": 0.22,
+   "neg_clean": 98,
+   "neg_decodable": 72,
+   "level0_progress": [
+    0.43123993277549744,
+    0.4329896907216495,
+    97
+   ],
+   "level0_keep_A": 0.7066675424575806,
+   "level0_flip": 0.5972222222222222,
+   "examples": [
+    {
+     "A": "Я бы не должна быть спать в этом месте",
+     "B": "Тебе должно быть здесь в постели",
+     "level0": "Ты должен быть спать в ночь в ночь"
+    },
+    {
+     "A": "Капитан Санта не будет в команде с капитаном и капитаном в Сантоке",
+     "B": "Капитан Санта и Санта в Сантосской команды Сантаи и Сантая",
+     "level0": "Капитан Санта Санта и Санта не пригласит с капитаном Сантами"
+    },
+    {
+     "A": "Мы не были приняты планы на шесть лет до конца года",
+     "B": "Мы должны принять все необходимые меры для того чтобы добиться того как можно было решено в этом году в течение пяти лет назад",
+     "level0": "Мы должны быть поставлены на цели в том числе в плане осуществления плана действий в области развития и развития в целом в целом в целом было решено в пункте 12 лет и мы должны быть приняты в этой областих целей целей и"
+    },
+    {
+     "A": "После того как он был убита в том числе в возрасте от своего брата и его братской братской братской братской Реббис в его возрасте в течение трех лет после того как он был убита в его братской",
+     "B": "После того как он был убита в том числе в возрасте в возрасте в возрасте от своего годах братской братской братской братской братской братской братской братской Реджики и его сыном в возрасте в возрасте",
+     "level0": "Последний год был убитым братом Уилсоном Уилсоном Уилсона Уилсона Уилсона Уилсона Уилли Уилли Уилли Уилли Уилли"
+    },
+    {
+     "A": "Если ты не можешь убить Кейт Уиллил",
+     "B": "Если ты можешь убить Кейт Уиллина",
+     "level0": "Если ты не можешь убить Кейт Уиллил"
+    }
+   ],
+   "stack_progress": [
+    0.5865965485572815,
+    0.5876288659793815,
+    97
+   ],
+   "stack_keep_A": 0.6952234506607056,
+   "stack_flip": 0.625,
+   "control_progress": [
+    0.24194684624671936,
+    0.20618556701030927,
+    97
+   ],
+   "control_keep_A": 0.7267856597900391,
+   "control_flip": 0.2638888888888889
+  },
+  {
+   "lang": "ru",
+   "factor": "tense",
+   "direction": "A->B",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 3.0,
+   "identical_level0": 0.29,
+   "level0_progress": [
+    0.18726712465286255,
+    0.2222222222222222,
+    99
+   ],
+   "level0_keep_A": 0.8095903992652893,
+   "examples": [
+    {
+     "A": "The international trade situation is particularly important to address economic growth in developing countries and developing countries in transition to developing countries in transition",
+     "B": "The main challenge of trade liberalization has been addressed by developing countries in developing countries with economies in transition to developing countries and countries in transitional development",
+     "level0": "The international trade situation is particularly important to address economic growth in developing countries and developing countries in transition to developing countries in transition"
+    },
+    {
+     "A": "He is hungry than food and food",
+     "B": "He was very poor for his life than he was hungry",
+     "level0": "He was hungry and hungry than his food hunger hungry"
+    },
+    {
+     "A": "Keep a little bitch on the ground",
+     "B": "He was just a little bitch",
+     "level0": "We have no more pressure left here"
+    },
+    {
+     "A": "Kyle wants to get them out of here",
+     "B": "Kenmy needs you to get them out of here",
+     "level0": "You guys need to get them out of here"
+    },
+    {
+     "A": "The maximum level of high quality models would be used to improve the quality of the productivity",
+     "B": "The maximum level of high quality would be used to be used as possible as possible as possible as possible as possible",
+     "level0": "The maximum level of high quality models would be used to improve the quality of the productivity"
+    }
+   ],
+   "stack_progress": [
+    0.30048179626464844,
+    0.32323232323232326,
+    99
+   ],
+   "stack_keep_A": 0.8220024704933167,
+   "control_progress": [
+    0.20468488335609436,
+    0.24242424242424243,
+    99
+   ],
+   "control_keep_A": 0.7409231066703796
+  },
+  {
+   "lang": "ru",
+   "factor": "tense",
+   "direction": "A->B",
+   "tgt": "ru",
+   "n": 100,
+   "slots_changed_median": 3.0,
+   "identical_level0": 0.29,
+   "level0_progress": [
+    0.11989238858222961,
+    0.22105263157894736,
+    95
+   ],
+   "level0_keep_A": 0.810039758682251,
+   "examples": [
+    {
+     "A": "В международной торговлетарной деятельности по проблемам торговли и развития страны является важным странам и развивающимися странами и развивающихся стран и развивающихся стран и развивающихся стран в развивающихся странах страны и развивающихся стран в",
+     "B": "В частности странам развивающихся стран и развивающихся стран в развивающихся странах страны и развивающихся стран в развивающихся странах страны в развивающихся странах страны и развивающихся стран мира и развития страны в развивающихся странах страны и развивающихся стран",
+     "level0": "В международной торговлетарной деятельности по проблемам торговли и развития страны является важным странам и развивающимися странами и развивающихся стран и развивающихся стран и развивающихся стран в развивающихся странах страны и развивающихся стран в"
+    },
+    {
+     "A": "Он был богатым человеком и голодным человекомм и голодным человеком",
+     "B": "Он был очень богатый человек и очень плохой голодный человек",
+     "level0": "Он был богатым человеком и его голодным человеком и его голодным человекомм"
+    },
+    {
+     "A": "Небольшое давление не только",
+     "B": "У меня нет не было достаточно подвергаться",
+     "level0": "Не надо было вмешиваться от этого"
+    },
+    {
+     "A": "Сэмми ты должен поймать их на тебя",
+     "B": "Кэм сказал тебе что ты должен был там забрать их",
+     "level0": "Сэмми ты должен убить тебя"
+    },
+    {
+     "A": "Для того чтобы использоваться качество для применения качества качества и качества качества качества",
+     "B": "В целях повышения качества качества качества качества качества качества качества качества качества качества качества качества и качества качества качества качества качества качества качества и качества качества качества качества качества качества качества и качества качества качества качества качества качества и качества качества качества качества качества и качества качества",
+     "level0": "Для того чтобы использоваться качество для применения качества качества и качества качества качества"
+    }
+   ],
+   "stack_progress": [
+    0.21560722589492798,
+    0.3368421052631579,
+    95
+   ],
+   "stack_keep_A": 0.8102636933326721,
+   "control_progress": [
+    0.21808061003684998,
+    0.21052631578947367,
+    95
+   ],
+   "control_keep_A": 0.7577148675918579
+  },
+  {
+   "lang": "ru",
+   "factor": "tense",
+   "direction": "B->A",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 3.0,
+   "identical_level0": 0.29,
+   "level0_progress": [
+    0.11801847815513611,
+    0.2222222222222222,
+    99
+   ],
+   "level0_keep_A": 0.8391289710998535,
+   "examples": [
+    {
+     "A": "The main challenge of trade liberalization has been addressed by developing countries in developing countries with economies in transition to developing countries and countries in transitional development",
+     "B": "The international trade situation is particularly important to address economic growth in developing countries and developing countries in transition to developing countries in transition",
+     "level0": "The main challenge of trade liberalization has been addressed by developing countries in developing countries with economies in transition to developing countries and countries in transitional development"
+    },
+    {
+     "A": "He was very poor for his life than he was hungry",
+     "B": "He is hungry than food and food",
+     "level0": "It was very dangerous for all the greatest foods of the world"
+    },
+    {
+     "A": "He was just a little bitch",
+     "B": "Keep a little bitch on the ground",
+     "level0": "It was just a little bitch"
+    },
+    {
+     "A": "Kenmy needs you to get them out of here",
+     "B": "Kyle wants to get them out of here",
+     "level0": "Kenmy needs you to get them out of here"
+    },
+    {
+     "A": "The maximum level of high quality would be used to be used as possible as possible as possible as possible as possible",
+     "B": "The maximum level of high quality models would be used to improve the quality of the productivity",
+     "level0": "The maximum level of high quality would be used to be used as possible as possible as possible as possible as possible"
+    }
+   ],
+   "stack_progress": [
+    0.33052176237106323,
+    0.37373737373737376,
+    99
+   ],
+   "stack_keep_A": 0.8050183057785034,
+   "control_progress": [
+    0.19709721207618713,
+    0.20202020202020202,
+    99
+   ],
+   "control_keep_A": 0.7547364234924316
+  },
+  {
+   "lang": "ru",
+   "factor": "tense",
+   "direction": "B->A",
+   "tgt": "ru",
+   "n": 100,
+   "slots_changed_median": 3.0,
+   "identical_level0": 0.29,
+   "level0_progress": [
+    0.09385129809379578,
+    0.18947368421052632,
+    95
+   ],
+   "level0_keep_A": 0.834658145904541,
+   "examples": [
+    {
+     "A": "В частности странам развивающихся стран и развивающихся стран в развивающихся странах страны и развивающихся стран в развивающихся странах страны в развивающихся странах страны и развивающихся стран мира и развития страны в развивающихся странах страны и развивающихся стран",
+     "B": "В международной торговлетарной деятельности по проблемам торговли и развития страны является важным странам и развивающимися странами и развивающихся стран и развивающихся стран и развивающихся стран в развивающихся странах страны и развивающихся стран в",
+     "level0": "В частности странам развивающихся стран и развивающихся стран в развивающихся странах страны и развивающихся стран в развивающихся странах страны в развивающихся странах страны и развивающихся стран мира и развития страны в развивающихся странах страны и развивающихся стран"
+    },
+    {
+     "A": "Он был очень богатый человек и очень плохой голодный человек",
+     "B": "Он был богатым человеком и голодным человекомм и голодным человеком",
+     "level0": "Это очень плохой ужасный человек и очень плохой ужасный человек"
+    },
+    {
+     "A": "У меня нет не было достаточно подвергаться",
+     "B": "Небольшое давление не только",
+     "level0": "Небольшое давлением"
+    },
+    {
+     "A": "Кэм сказал тебе что ты должен был там забрать их",
+     "B": "Сэмми ты должен поймать их на тебя",
+     "level0": "Кэрри должен попросить тебя за ним"
+    },
+    {
+     "A": "В целях повышения качества качества качества качества качества качества качества качества качества качества качества качества и качества качества качества качества качества качества качества и качества качества качества качества качества качества качества и качества качества качества качества качества качества и качества качества качества качества качества и качества качества",
+     "B": "Для того чтобы использоваться качество для применения качества качества и качества качества качества",
+     "level0": "В целях повышения качества качества качества качества качества качества качества качества качества качества качества качества и качества качества качества качества качества качества качества и качества качества качества качества качества качества качества и качества качества качества качества качества качества и качества качества качества качества качества и качества качества"
+    }
+   ],
+   "stack_progress": [
+    0.2233380675315857,
+    0.28421052631578947,
+    95
+   ],
+   "stack_keep_A": 0.8301438689231873,
+   "control_progress": [
+    0.2631217837333679,
+    0.22105263157894736,
+    95
+   ],
+   "control_keep_A": 0.7506248354911804
+  },
+  {
+   "lang": "ja",
+   "factor": "negation",
+   "direction": "A->B",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 59.5,
+   "identical_level0": 0.17,
+   "neg_clean": 100,
+   "neg_decodable": 62,
+   "level0_progress": [
+    0.44991534948349,
+    0.46808510638297873,
+    94
+   ],
+   "level0_keep_A": 0.6514055728912354,
+   "level0_flip": 0.5806451612903226,
+   "examples": [
+    {
+     "A": "She wants me to come here",
+     "B": "She wanted me to come here without me",
+     "level0": "I didn not want to come here before you came here"
+    },
+    {
+     "A": "She has been more important than something else than the other things is more important than ever since she was talking about her",
+     "B": "The situation was not much more important than the situation of the former Yugoslavia since then",
+     "level0": "The problem was very important for her own relationship but not yet had any other questions"
+    },
+    {
+     "A": "You can get your name off now",
+     "B": "You can not get rided up with me",
+     "level0": "You can do anything wrong with me"
+    },
+    {
+     "A": "He went to school at school school",
+     "B": "He won not leave school until school school",
+     "level0": "He went to school at school school"
+    },
+    {
+     "A": "Because I wanted to spend to New York City Parks in New York City",
+     "B": "And I mean I want to spend home for a year ago when I live homeland is going to spend homeland holiday for years",
+     "level0": "Because I wanted to spend to New York City Parks in New York City"
+    }
+   ],
+   "stack_progress": [
+    0.6124264597892761,
+    0.6276595744680851,
+    94
+   ],
+   "stack_keep_A": 0.6764482259750366,
+   "stack_flip": 0.6129032258064516,
+   "control_progress": [
+    0.3408558964729309,
+    0.30851063829787234,
+    94
+   ],
+   "control_keep_A": 0.6174081563949585,
+   "control_flip": 0.25806451612903225
+  },
+  {
+   "lang": "ja",
+   "factor": "negation",
+   "direction": "A->B",
+   "tgt": "ja",
+   "n": 100,
+   "slots_changed_median": 59.5,
+   "identical_level0": 0.17,
+   "neg_clean": 100,
+   "neg_decodable": 42,
+   "level0_progress": [
+    0.3207235038280487,
+    0.3894736842105263,
+    95
+   ],
+   "level0_keep_A": 0.7271499633789062,
+   "level0_flip": 0.4523809523809524,
+   "examples": [
+    {
+     "A": "私は彼女に会いたい",
+     "B": "私は彼女に会いたいたくない",
+     "level0": "私は君に会いたいたくない"
+    },
+    {
+     "A": "その件はもっと多くの事がある",
+     "B": "その件は大勢な事に過ぎない",
+     "level0": "その件は私に何か関係がある"
+    },
+    {
+     "A": "お前はお前を手伝う",
+     "B": "お前はお前を失う",
+     "level0": "お前はやめてくれ"
+    },
+    {
+     "A": "他は学校に遅れるのを待つ",
+     "B": "私は学校に遅れるまで学校に遅れる",
+     "level0": "他は学校に遅れるのを待つ"
+    },
+    {
+     "A": "この島は20年間に居てた",
+     "B": "そして私はこの島に住んでるから",
+     "level0": "この島は20年間に居てた"
+    }
+   ],
+   "stack_progress": [
+    0.7030701637268066,
+    0.6,
+    95
+   ],
+   "stack_keep_A": 0.7152564525604248,
+   "stack_flip": 0.7380952380952381,
+   "control_progress": [
+    0.3550001084804535,
+    0.3157894736842105,
+    95
+   ],
+   "control_keep_A": 0.6869264841079712,
+   "control_flip": 0.40476190476190477
+  },
+  {
+   "lang": "ja",
+   "factor": "negation",
+   "direction": "B->A",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 59.5,
+   "identical_level0": 0.17,
+   "neg_clean": 100,
+   "neg_decodable": 62,
+   "level0_progress": [
+    0.4806661158800125,
+    0.4787234042553192,
+    94
+   ],
+   "level0_keep_A": 0.6742137670516968,
+   "level0_flip": 0.5645161290322581,
+   "examples": [
+    {
+     "A": "She wanted me to come here without me",
+     "B": "She wants me to come here",
+     "level0": "She wants me to come here somewhere else"
+    },
+    {
+     "A": "The situation was not much more important than the situation of the former Yugoslavia since then",
+     "B": "She has been more important than something else than the other things is more important than ever since she was talking about her",
+     "level0": "The most important thing is more important than the situation of the country and the rest of the world"
+    },
+    {
+     "A": "You can not get rided up with me",
+     "B": "You can get your name off now",
+     "level0": "You can get your name back to New York"
+    },
+    {
+     "A": "He won not leave school until school school",
+     "B": "He went to school at school school",
+     "level0": "He won not leave school until school school"
+    },
+    {
+     "A": "And I mean I want to spend home for a year ago when I live homeland is going to spend homeland holiday for years",
+     "B": "Because I wanted to spend to New York City Parks in New York City",
+     "level0": "And I mean I want to spend home for a year ago when I live homeland is going to spend homeland holiday for years"
+    }
+   ],
+   "stack_progress": [
+    0.6954292953014374,
+    0.6808510638297872,
+    94
+   ],
+   "stack_keep_A": 0.6549850702285767,
+   "stack_flip": 0.6935483870967742,
+   "control_progress": [
+    0.4270036965608597,
+    0.3617021276595745,
+    94
+   ],
+   "control_keep_A": 0.6038269996643066,
+   "control_flip": 0.3870967741935484
+  },
+  {
+   "lang": "ja",
+   "factor": "negation",
+   "direction": "B->A",
+   "tgt": "ja",
+   "n": 100,
+   "slots_changed_median": 59.5,
+   "identical_level0": 0.17,
+   "neg_clean": 100,
+   "neg_decodable": 42,
+   "level0_progress": [
+    0.4234190285205841,
+    0.42105263157894735,
+    95
+   ],
+   "level0_keep_A": 0.734027087688446,
+   "level0_flip": 0.5476190476190477,
+   "examples": [
+    {
+     "A": "私は彼女に会いたいたくない",
+     "B": "私は彼女に会いたい",
+     "level0": "私は彼女に彼女を連れて行きたい"
+    },
+    {
+     "A": "その件は大勢な事に過ぎない",
+     "B": "その件はもっと多くの事がある",
+     "level0": "その件はもっと多くのより重要なの"
+    },
+    {
+     "A": "お前はお前を失う",
+     "B": "お前はお前を手伝う",
+     "level0": "お前はアルサムを付けて"
+    },
+    {
+     "A": "私は学校に遅れるまで学校に遅れる",
+     "B": "他は学校に遅れるのを待つ",
+     "level0": "私は学校に遅れるまで学校に遅れる"
+    },
+    {
+     "A": "そして私はこの島に住んでるから",
+     "B": "この島は20年間に居てた",
+     "level0": "そして私はこの島に住んでるから"
+    }
+   ],
+   "stack_progress": [
+    0.6934247016906738,
+    0.5684210526315789,
+    95
+   ],
+   "stack_keep_A": 0.7234781384468079,
+   "stack_flip": 0.7380952380952381,
+   "control_progress": [
+    0.39858099818229675,
+    0.37894736842105264,
+    95
+   ],
+   "control_keep_A": 0.6664689779281616,
+   "control_flip": 0.47619047619047616
+  },
+  {
+   "lang": "ja",
+   "factor": "tense",
+   "direction": "A->B",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 2.5,
+   "identical_level0": 0.34,
+   "level0_progress": [
+    0.09779103100299835,
+    0.1836734693877551,
+    98
+   ],
+   "level0_keep_A": 0.830142080783844,
+   "examples": [
+    {
+     "A": "You know how long as you were going to learn about your lifetime",
+     "B": "You were very excited about how long as you were going to be long before you were having a little bit longer",
+     "level0": "You know how long as you feel like you were going to be very younger than you knew about this story"
+    },
+    {
+     "A": "Your career was based on your career career and your career was very important for your career career career",
+     "B": "Your career was based on your career career career and your career was different than your career career",
+     "level0": "Your career was your career career for your career career career career"
+    },
+    {
+     "A": "He must have taken care of Peterton",
+     "B": "He was looking for me to get some kind of glasses",
+     "level0": "He was gonna have taken care of Jackton on his own side"
+    },
+    {
+     "A": "I won not leave my office until I start",
+     "B": "I haven tried to get rided off my office without surgery",
+     "level0": "I haven left my office before I left up"
+    },
+    {
+     "A": "The new medicine will be recovered soon again",
+     "B": "There is another medicine again in the lab again",
+     "level0": "The new medicine will be recovered soon again"
+    }
+   ],
+   "stack_progress": [
+    0.2795424610376358,
+    0.37755102040816324,
+    98
+   ],
+   "stack_keep_A": 0.8097190856933594,
+   "control_progress": [
+    0.20825020968914032,
+    0.1836734693877551,
+    98
+   ],
+   "control_keep_A": 0.748130738735199
+  },
+  {
+   "lang": "ja",
+   "factor": "tense",
+   "direction": "A->B",
+   "tgt": "ja",
+   "n": 100,
+   "slots_changed_median": 2.5,
+   "identical_level0": 0.34,
+   "level0_progress": [
+    0.05850088596343994,
+    0.27058823529411763,
+    85
+   ],
+   "level0_keep_A": 0.860434353351593,
+   "examples": [
+    {
+     "A": "お前は長い間で知らせた",
+     "B": "お前は長い間で会った時も",
+     "level0": "お前は君の話をした"
+    },
+    {
+     "A": "お前の研究は お前の研究で",
+     "B": "お前の研究は お前の研究で",
+     "level0": "お前の名誉は お前の名誉な男の名誉だ"
+    },
+    {
+     "A": "お前はトムの家を連れて行く",
+     "B": "お前はトムに居た",
+     "level0": "その通りはトムの家を盗んだ"
+    },
+    {
+     "A": "私はその前に行かないで",
+     "B": "私はそのプログラムを消したから",
+     "level0": "私はその前にその前にその前に行かない"
+    },
+    {
+     "A": "新薬はもうすぐ新しい薬を",
+     "B": "新薬はもうすぐ戻った",
+     "level0": "新薬はもうすぐ新しい薬を"
+    }
+   ],
+   "stack_progress": [
+    0.31744110584259033,
+    0.4,
+    85
+   ],
+   "stack_keep_A": 0.8721359968185425,
+   "control_progress": [
+    0.1164756715297699,
+    0.25882352941176473,
+    85
+   ],
+   "control_keep_A": 0.7947091460227966
+  },
+  {
+   "lang": "ja",
+   "factor": "tense",
+   "direction": "B->A",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 2.5,
+   "identical_level0": 0.34,
+   "level0_progress": [
+    0.09233537316322327,
+    0.23469387755102042,
+    98
+   ],
+   "level0_keep_A": 0.82955002784729,
+   "examples": [
+    {
+     "A": "You were very excited about how long as you were going to be long before you were having a little bit longer",
+     "B": "You know how long as you were going to learn about your lifetime",
+     "level0": "You were very close to see how long ago before you were having a long time ago"
+    },
+    {
+     "A": "Your career was based on your career career career and your career was different than your career career",
+     "B": "Your career was based on your career career and your career was very important for your career career career",
+     "level0": "Your research was based on your own experience and has been discussed by your experience as an important element of your career and your experience was being made by the fact that you were doing by the first generation of your career and your personality"
+    },
+    {
+     "A": "He was looking for me to get some kind of glasses",
+     "B": "He must have taken care of Peterton",
+     "level0": "Tomy wants to get him out of here"
+    },
+    {
+     "A": "I haven tried to get rided off my office without surgery",
+     "B": "I won not leave my office until I start",
+     "level0": "I haven tried to leave my program without surgery"
+    },
+    {
+     "A": "There is another medicine again in the lab again",
+     "B": "The new medicine will be recovered soon again",
+     "level0": "There is another medicine again in the lab again"
+    }
+   ],
+   "stack_progress": [
+    0.2899588644504547,
+    0.336734693877551,
+    98
+   ],
+   "stack_keep_A": 0.8198437690734863,
+   "control_progress": [
+    0.23052369058132172,
+    0.22448979591836735,
+    98
+   ],
+   "control_keep_A": 0.7403091192245483
+  },
+  {
+   "lang": "ja",
+   "factor": "tense",
+   "direction": "B->A",
+   "tgt": "ja",
+   "n": 100,
+   "slots_changed_median": 2.5,
+   "identical_level0": 0.34,
+   "level0_progress": [
+    5.364418029785156e-07,
+    0.2235294117647059,
+    85
+   ],
+   "level0_keep_A": 0.8661761283874512,
+   "examples": [
+    {
+     "A": "お前は長い間で会った時も",
+     "B": "お前は長い間で知らせた",
+     "level0": "お前は長い間で長い間で"
+    },
+    {
+     "A": "お前の研究は お前の研究で",
+     "B": "お前の研究は お前の研究で",
+     "level0": "お前の研究は お前の研究で"
+    },
+    {
+     "A": "お前はトムに居た",
+     "B": "お前はトムの家を連れて行く",
+     "level0": "お前はトムにいる"
+    },
+    {
+     "A": "私はそのプログラムを消したから",
+     "B": "私はその前に行かないで",
+     "level0": "私は大学から逃げる"
+    },
+    {
+     "A": "新薬はもうすぐ戻った",
+     "B": "新薬はもうすぐ新しい薬を",
+     "level0": "新薬はもうすぐ戻った"
+    }
+   ],
+   "stack_progress": [
+    0.01416921615600586,
+    0.29411764705882354,
+    85
+   ],
+   "stack_keep_A": 0.885332465171814,
+   "control_progress": [
+    0.003516256809234619,
+    0.3058823529411765,
+    85
+   ],
+   "control_keep_A": 0.8003280758857727
+  }
+ ]
+}

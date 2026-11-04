@@ -1,0 +1,37 @@
+model_dir/long-b128-seed2-20261014T160630Z/nubun_cs_step500000.eval.pt (step 500000)  mode=radical  side=x  pad_to=64  shards=de,fr,es,ru,ja
+negation detector on references (accuracy vs English-side polarity, clean pairs):
+  de: 99.5% on 598 rows (100% of pairs clean on the English side)
+  fr: 99.5% on 598 rows (100% of pairs clean on the English side)
+  es: 99.7% on 598 rows (100% of pairs clean on the English side)
+  ru: 99.5% on 598 rows (100% of pairs clean on the English side)
+  ja: 97.5% on 598 rows (100% of pairs clean on the English side)
+de  ->en  insert          n= 374 slots=55  negated  52% of 273  (negated 0.27 -> 0.64)  keep 0.680  text unchanged 11%
+de  ->en  insert_control  n= 374 slots=55  negated   8% of 273  (negated 0.27 -> 0.26)  keep 0.677  text unchanged 9%
+de  ->en  remove          n=  26 slots=55  un-negated  39% of  23  (negated 0.88 -> 0.58)  keep 0.614  text unchanged 4%
+de  ->de  insert          n= 374 slots=55  negated  82% of 238  (negated 0.36 -> 0.88)  keep 0.656  text unchanged 8%
+de  ->de  insert_control  n= 374 slots=55  negated   7% of 238  (negated 0.36 -> 0.36)  keep 0.718  text unchanged 6%
+de  ->de  remove          n=  26 slots=55  un-negated  35% of  26  (negated 1.00 -> 0.65)  keep 0.659  text unchanged 0%
+fr  ->en  insert          n= 365 slots=53  negated  34% of 268  (negated 0.27 -> 0.50)  keep 0.742  text unchanged 17%
+fr  ->en  insert_control  n= 365 slots=53  negated   7% of 268  (negated 0.27 -> 0.27)  keep 0.738  text unchanged 11%
+fr  ->en  remove          n=  35 slots=53  un-negated  32% of  28  (negated 0.80 -> 0.57)  keep 0.690  text unchanged 20%
+fr  ->fr  insert          n= 365 slots=53  negated  49% of 259  (negated 0.29 -> 0.64)  keep 0.696  text unchanged 11%
+fr  ->fr  insert_control  n= 365 slots=53  negated   7% of 259  (negated 0.29 -> 0.27)  keep 0.736  text unchanged 9%
+fr  ->fr  remove          n=  35 slots=53  un-negated  41% of  34  (negated 0.97 -> 0.57)  keep 0.689  text unchanged 11%
+es  ->en  insert          n= 378 slots=54  negated  44% of 271  (negated 0.28 -> 0.58)  keep 0.704  text unchanged 16%
+es  ->en  insert_control  n= 378 slots=54  negated   5% of 271  (negated 0.28 -> 0.25)  keep 0.719  text unchanged 11%
+es  ->en  remove          n=  22 slots=54  un-negated  41% of  22  (negated 1.00 -> 0.59)  keep 0.718  text unchanged 0%
+es  ->es  insert          n= 378 slots=54  negated  40% of 255  (negated 0.33 -> 0.59)  keep 0.743  text unchanged 13%
+es  ->es  insert_control  n= 378 slots=54  negated   2% of 255  (negated 0.33 -> 0.25)  keep 0.750  text unchanged 13%
+es  ->es  remove          n=  22 slots=54  un-negated  36% of  22  (negated 1.00 -> 0.64)  keep 0.755  text unchanged 9%
+ru  ->en  insert          n= 375 slots=59  negated  75% of 271  (negated 0.28 -> 0.81)  keep 0.545  text unchanged 4%
+ru  ->en  insert_control  n= 375 slots=59  negated  11% of 271  (negated 0.28 -> 0.27)  keep 0.535  text unchanged 5%
+ru  ->en  remove          n=  25 slots=59  un-negated  52% of  23  (negated 0.92 -> 0.44)  keep 0.557  text unchanged 8%
+ru  ->ru  insert          n= 375 slots=59  negated  86% of 253  (negated 0.33 -> 0.90)  keep 0.528  text unchanged 3%
+ru  ->ru  insert_control  n= 375 slots=59  negated   8% of 253  (negated 0.33 -> 0.27)  keep 0.559  text unchanged 3%
+ru  ->ru  remove          n=  25 slots=59  un-negated  36% of  25  (negated 1.00 -> 0.64)  keep 0.576  text unchanged 4%
+ja  ->en  insert          n= 374 slots=56  negated  60% of 274  (negated 0.27 -> 0.70)  keep 0.585  text unchanged 7%
+ja  ->en  insert_control  n= 374 slots=56  negated   6% of 274  (negated 0.27 -> 0.20)  keep 0.591  text unchanged 6%
+ja  ->en  remove          n=  26 slots=56  un-negated  50% of  20  (negated 0.77 -> 0.42)  keep 0.649  text unchanged 15%
+ja  ->ja  insert          n= 374 slots=56  negated  54% of 292  (negated 0.22 -> 0.60)  keep 0.564  text unchanged 8%
+ja  ->ja  insert_control  n= 374 slots=56  negated   8% of 292  (negated 0.22 -> 0.15)  keep 0.614  text unchanged 10%
+ja  ->ja  remove          n=  26 slots=56  un-negated  32% of  19  (negated 0.73 -> 0.58)  keep 0.762  text unchanged 27%

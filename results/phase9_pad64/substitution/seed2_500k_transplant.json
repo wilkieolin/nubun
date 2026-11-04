@@ -1,0 +1,2286 @@
+{
+ "checkpoint": "model_dir/long-b128-seed2-20261014T160630Z/nubun_cs_step500000.eval.pt",
+ "args": {
+  "checkpoint": "model_dir/long-b128-seed2-20261014T160630Z/nubun_cs_step500000.eval.pt",
+  "minpairs_dir": "data/minpairs_npy",
+  "mode": "transplant",
+  "radical": null,
+  "slot_frac": 0.5,
+  "langs": "de,fr,es,ru,ja",
+  "side": "x",
+  "tgt_langs": "en,src",
+  "n_pairs": 100,
+  "n_examples": 5,
+  "max_gen_len": 48,
+  "batch_size": 64,
+  "pad_to": null,
+  "corpus": "data/parallel_corpus.npz",
+  "embedding_table": "data/embedding_table.pt",
+  "semantic_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "seed": 0,
+  "out": "results/phase9_pad64/substitution/seed2_500k_transplant.json",
+  "device": "cpu"
+ },
+ "rows": [
+  {
+   "lang": "de",
+   "factor": "negation",
+   "direction": "A->B",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 52.0,
+   "identical_level0": 0.02,
+   "neg_clean": 98,
+   "neg_decodable": 75,
+   "level0_progress": [
+    0.39276254177093506,
+    0.37,
+    100
+   ],
+   "level0_keep_A": 0.766802191734314,
+   "level0_flip": 0.3333333333333333,
+   "examples": [
+    {
+     "A": "In November 1998 MTU continued to work on NTU Maintenance Canada",
+     "B": "In November 1998 MTU continued to pay NTU troops in New York City until November 1998.",
+     "level0": "In November 1998 MTU was forced to continue to hold NTU High Level on September 13, 1998."
+    },
+    {
+     "A": "Ironic is why I am perfectly prepared for everyone else to survive",
+     "B": "Ironie isn not why I am innocent because you all survived",
+     "level0": "Ironic is why I am so sure that everyone survived alive"
+    },
+    {
+     "A": "He said I would go home tomorrow morning",
+     "B": "He didn ́t say I would drive tomorrow night",
+     "level0": "He said he would go tomorrow if he wanted me to go home tomorrow"
+    },
+    {
+     "A": "This page is available on the entertainment site of provinces of Cáceres provinces",
+     "B": "This page does not contain information about province of Cáceres Province",
+     "level0": "This page is available to you about entertainment in Cáceres province"
+    },
+    {
+     "A": "Dear goddamn tryin 30 years ago trying to show this showcase first time",
+     "B": "Do you have any idea how fast 30 years ago that you have seen the show first time",
+     "level0": "Do you intend to try this shitty thing 30 years ago trying to show off the first show of the showcase of the first time"
+    }
+   ],
+   "stack_progress": [
+    0.4308674782514572,
+    0.46,
+    100
+   ],
+   "stack_keep_A": 0.7537051439285278,
+   "stack_flip": 0.4533333333333333,
+   "control_progress": [
+    0.3574642688035965,
+    0.3,
+    100
+   ],
+   "control_keep_A": 0.7052519917488098,
+   "control_flip": 0.26666666666666666
+  },
+  {
+   "lang": "de",
+   "factor": "negation",
+   "direction": "A->B",
+   "tgt": "de",
+   "n": 100,
+   "slots_changed_median": 52.0,
+   "identical_level0": 0.02,
+   "neg_clean": 98,
+   "neg_decodable": 90,
+   "level0_progress": [
+    0.3003842532634735,
+    0.33,
+    100
+   ],
+   "level0_keep_A": 0.7818633913993835,
+   "level0_flip": 0.2777777777777778,
+   "examples": [
+    {
+     "A": "Im November 1998 wurde MTU die NTU im Jahr 1998 aufgestellt",
+     "B": "November 1998 wurde der MTU nicht auf dem Stand von HTU zurückgegeben",
+     "level0": "Im November 1998 wurde MTU die NTU fortgesetzte NTU zugewiesen"
+    },
+    {
+     "A": "Das Ironie ist mir erlaubt und natürlich für alle Menschen lebendig zu leben",
+     "B": "Das Ironium ist nicht für mich gestimmt und ich bin mir sicher für alle Menschen zu lebenden",
+     "level0": "Das Ironie ist mir völlig sicher gewesen als ich für dich verantwortlich bin ich nicht mehr lebendig"
+    },
+    {
+     "A": "Er sagte morgen nach Hause zu gehen",
+     "B": "Er sagte nicht mir morgen zu Hause zu fahren",
+     "level0": "Er sagte mir nicht nach Hause gehen sollen"
+    },
+    {
+     "A": "Das ist hier über Details zu Unterhaltung von Provinz Cáceres",
+     "B": "Das Seite findet nicht Informationen über die Unterhaltung von Provinz Fiduktionen ausgliederlich",
+     "level0": "Das ist nicht mehr bekannt für die Unterhaltung von Cáceres noch mehr als die Unterhaltung von dezenen Seiten von Brüssel"
+    },
+    {
+     "A": "Du hast versucht diese Scheiße 30 Jahre lang versucht versucht zu sehen wie ein Videospiel erschien vor dem ersten Mal auf dem ersten Mal erschienen",
+     "B": "Du hast versucht dieses Scheißjahr 30 Jahre nicht als erste Show auf dem ersten Auftritt erschienen",
+     "level0": "Du hast versucht diese Scheißerei 30 Jahre nach dem Start der ersten Videoausstellung zu machen"
+    }
+   ],
+   "stack_progress": [
+    0.47698983550071716,
+    0.47,
+    100
+   ],
+   "stack_keep_A": 0.7756625413894653,
+   "stack_flip": 0.4777777777777778,
+   "control_progress": [
+    0.2813715487718582,
+    0.23,
+    100
+   ],
+   "control_keep_A": 0.743964672088623,
+   "control_flip": 0.18888888888888888
+  },
+  {
+   "lang": "de",
+   "factor": "negation",
+   "direction": "B->A",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 52.0,
+   "identical_level0": 0.02,
+   "neg_clean": 98,
+   "neg_decodable": 75,
+   "level0_progress": [
+    0.3622996509075165,
+    0.38,
+    100
+   ],
+   "level0_keep_A": 0.759238064289093,
+   "level0_flip": 0.30666666666666664,
+   "examples": [
+    {
+     "A": "In November 1998 MTU continued to pay NTU troops in New York City until November 1998.",
+     "B": "In November 1998 MTU continued to work on NTU Maintenance Canada",
+     "level0": "In November 1998 MTU High Level NTU continued to provide support to NTUs in 2000."
+    },
+    {
+     "A": "Ironie isn not why I am innocent because you all survived",
+     "B": "Ironic is why I am perfectly prepared for everyone else to survive",
+     "level0": "Ironie isn not my reason why I am willing to survive all of you alive"
+    },
+    {
+     "A": "He didn ́t say I would drive tomorrow night",
+     "B": "He said I would go home tomorrow morning",
+     "level0": "He said I would drive home tomorrow night"
+    },
+    {
+     "A": "This page does not contain information about province of Cáceres Province",
+     "B": "This page is available on the entertainment site of provinces of Cáceres provinces",
+     "level0": "This page contains information about provinces of Cáceres Province"
+    },
+    {
+     "A": "Do you have any idea how fast 30 years ago that you have seen the show first time",
+     "B": "Dear goddamn tryin 30 years ago trying to show this showcase first time",
+     "level0": "Do you try this shitty thing 30 years ago when you started showing the show first time"
+    }
+   ],
+   "stack_progress": [
+    0.4421175420284271,
+    0.44,
+    100
+   ],
+   "stack_keep_A": 0.7501681447029114,
+   "stack_flip": 0.4666666666666667,
+   "control_progress": [
+    0.29484182596206665,
+    0.25,
+    100
+   ],
+   "control_keep_A": 0.6951748728752136,
+   "control_flip": 0.16
+  },
+  {
+   "lang": "de",
+   "factor": "negation",
+   "direction": "B->A",
+   "tgt": "de",
+   "n": 100,
+   "slots_changed_median": 52.0,
+   "identical_level0": 0.02,
+   "neg_clean": 98,
+   "neg_decodable": 90,
+   "level0_progress": [
+    0.3142046630382538,
+    0.36,
+    100
+   ],
+   "level0_keep_A": 0.7694824934005737,
+   "level0_flip": 0.43333333333333335,
+   "examples": [
+    {
+     "A": "November 1998 wurde der MTU nicht auf dem Stand von HTU zurückgegeben",
+     "B": "Im November 1998 wurde MTU die NTU im Jahr 1998 aufgestellt",
+     "level0": "November 1998 wurde MTU vom NTU auf dem Nationalen Institut für die Entwicklung der Arbeitskräfte in New York zurückgewiesen"
+    },
+    {
+     "A": "Das Ironium ist nicht für mich gestimmt und ich bin mir sicher für alle Menschen zu lebenden",
+     "B": "Das Ironie ist mir erlaubt und natürlich für alle Menschen lebendig zu leben",
+     "level0": "Das Ironium ist nicht für mich verantwortlich für alle Menschen zu leben und euch zu leben zu lassen"
+    },
+    {
+     "A": "Er sagte nicht mir morgen zu Hause zu fahren",
+     "B": "Er sagte morgen nach Hause zu gehen",
+     "level0": "Ich sagte nicht morgen nach Hause zu Hause zu fahren"
+    },
+    {
+     "A": "Das Seite findet nicht Informationen über die Unterhaltung von Provinz Fiduktionen ausgliederlich",
+     "B": "Das ist hier über Details zu Unterhaltung von Provinz Cáceres",
+     "level0": "Das Seite findet Ihnen nicht Informationen über das Unterhaltungsabteilung provínciarte Republik VIARIO"
+    },
+    {
+     "A": "Du hast versucht dieses Scheißjahr 30 Jahre nicht als erste Show auf dem ersten Auftritt erschienen",
+     "B": "Du hast versucht diese Scheiße 30 Jahre lang versucht versucht zu sehen wie ein Videospiel erschien vor dem ersten Mal auf dem ersten Mal erschienen",
+     "level0": "Du hast versucht dieses Scheißjahr 30 Jahre nicht versucht als erste Show der Show auf dem ersten Mal zu sein"
+    }
+   ],
+   "stack_progress": [
+    0.3705689609050751,
+    0.42,
+    100
+   ],
+   "stack_keep_A": 0.7556064128875732,
+   "stack_flip": 0.5222222222222223,
+   "control_progress": [
+    0.25443533062934875,
+    0.19,
+    100
+   ],
+   "control_keep_A": 0.7344711422920227,
+   "control_flip": 0.15555555555555556
+  },
+  {
+   "lang": "de",
+   "factor": "tense",
+   "direction": "A->B",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 3.0,
+   "identical_level0": 0.11,
+   "level0_progress": [
+    0.1501947045326233,
+    0.18556701030927836,
+    97
+   ],
+   "level0_keep_A": 0.8860057592391968,
+   "examples": [
+    {
+     "A": "The report contains concluding comments and conclusions of GRPE Committee on Canadian Library Legislation in Canberra regions",
+     "B": "The report concluded the conclusions of the CERC published by the Canadian Library Library in Cologne 2004.",
+     "level0": "The report contains concluding comments from GRPE Legislative Council on Canadian Library 2004."
+    },
+    {
+     "A": "My whole thing is upstairs here",
+     "B": "My whole life was above me",
+     "level0": "My whole thing happened upstairs"
+    },
+    {
+     "A": "This is why I stole computer computer codes written down on Japan every operational operation",
+     "B": "That was what I stole from computer computer computer codes written down on Japan every operational device",
+     "level0": "This is why I stole computer code computerized by Japan every operational operation"
+    },
+    {
+     "A": "Howell and Cockwell are afraid of being one of your people manipulating them",
+     "B": "Howellwell and his cowardness fears one of your choices to manipulate voters against him",
+     "level0": "Howell and Cockwell are afraid of being one of your people manipulating them"
+    },
+    {
+     "A": "We need our own solutions to our own problems",
+     "B": "We had to find our own solution",
+     "level0": "We need our own solutions to our own problems"
+    }
+   ],
+   "stack_progress": [
+    0.10440373420715332,
+    0.2268041237113402,
+    97
+   ],
+   "stack_keep_A": 0.9030248522758484,
+   "control_progress": [
+    0.18791848421096802,
+    0.15463917525773196,
+    97
+   ],
+   "control_keep_A": 0.8239245414733887
+  },
+  {
+   "lang": "de",
+   "factor": "tense",
+   "direction": "A->B",
+   "tgt": "de",
+   "n": 100,
+   "slots_changed_median": 3.0,
+   "identical_level0": 0.11,
+   "level0_progress": [
+    0.17237427830696106,
+    0.1958762886597938,
+    97
+   ],
+   "level0_keep_A": 0.8788882493972778,
+   "examples": [
+    {
+     "A": "Die Berichtigung und Schlussfolgerung des EPRD ist das Legislative des britischen Bibliotheksverzeichnisse für das Web verfügbar",
+     "B": "Die Berichte wurden von der EPAR über die Legislative Library veröffentlicht und wurden im Jahr 1995 veröffentlicht und veröffentlicht worden sein Ende 2007 veröffentlicht worden sein",
+     "level0": "Die Berichte sind Berichtigungen über die EPÜG über das Legislativblatt des britischen Bibliotheks verfügbar und enthaltene Dokumentationen im Jahr 1995 über das Abkommen über den Bereich der Rechtsprechung und der Rechtspre"
+    },
+    {
+     "A": "Ich habe alles Zeugen überstanden",
+     "B": "Meine ganze Zeuge waren oben oben oben oben",
+     "level0": "Ich habe alles über den Stapel gehört"
+    },
+    {
+     "A": "Das ist das Grund dafür gekommen wie ich die Computerkugel gestohlen habe und dass sie alle Operationen auf Japan gefertigt wurden",
+     "B": "Das war meine Grund dafür ausgegangen und die Computerisierung wurde von Japan geschrieben und alles unter dem Einsatz seiner Operation verfasst wurde",
+     "level0": "Das ist das Grund dafür ausgegangen als die Computerkugel gestohlen wurde von Japan geschrieben und seine gesamte Operation verlegt sich auf jeden Fall auf dem Computersystem zurückgefasst"
+    },
+    {
+     "A": "Howell und Cock halten sich mit einem Verdächtigen zu einem Volk zu schrecklichen Wahlen zu machen",
+     "B": "Howell und seine Verdächtige sind Angst vor einer Wahl zu machen und sich zu manipulieren",
+     "level0": "Howell und Cock halten sich mit einem Verdächtigen zu einem Volk zu schrecklichen Wahlen zu machen"
+    },
+    {
+     "A": "Wir müssen unsere eigenen Lösungen finden",
+     "B": "Wir haben unsere eigenen Lösungen gefunden haben",
+     "level0": "Wir müssen unsere eigenen Lösungen finden"
+    }
+   ],
+   "stack_progress": [
+    0.16810908913612366,
+    0.1958762886597938,
+    97
+   ],
+   "stack_keep_A": 0.8947166204452515,
+   "control_progress": [
+    0.19811344146728516,
+    0.18556701030927836,
+    97
+   ],
+   "control_keep_A": 0.8407711982727051
+  },
+  {
+   "lang": "de",
+   "factor": "tense",
+   "direction": "B->A",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 3.0,
+   "identical_level0": 0.11,
+   "level0_progress": [
+    0.09820020198822021,
+    0.17525773195876287,
+    97
+   ],
+   "level0_keep_A": 0.8699089884757996,
+   "examples": [
+    {
+     "A": "The report concluded the conclusions of the CERC published by the Canadian Library Library in Cologne 2004.",
+     "B": "The report contains concluding comments and conclusions of GRPE Committee on Canadian Library Legislation in Canberra regions",
+     "level0": "The report concluded the conclusions of the CERC Board on the legislative text of the Library of Columbia Legislative Library"
+    },
+    {
+     "A": "My whole life was above me",
+     "B": "My whole thing is upstairs here",
+     "level0": "All my clothes were upstairs above that front door"
+    },
+    {
+     "A": "That was what I stole from computer computer computer codes written down on Japan every operational device",
+     "B": "This is why I stole computer computer codes written down on Japan every operational operation",
+     "level0": "That was what I stole from computer computer computers who wrote down everything in Japan during his operational operation"
+    },
+    {
+     "A": "Howellwell and his cowardness fears one of your choices to manipulate voters against him",
+     "B": "Howell and Cockwell are afraid of being one of your people manipulating them",
+     "level0": "Howellwell and his cowardness fears one of your choices to manipulate voters against him"
+    },
+    {
+     "A": "We had to find our own solution",
+     "B": "We need our own solutions to our own problems",
+     "level0": "We had to find our own solution"
+    }
+   ],
+   "stack_progress": [
+    0.16226071119308472,
+    0.2268041237113402,
+    97
+   ],
+   "stack_keep_A": 0.8686705231666565,
+   "control_progress": [
+    0.15142053365707397,
+    0.1958762886597938,
+    97
+   ],
+   "control_keep_A": 0.8107262253761292
+  },
+  {
+   "lang": "de",
+   "factor": "tense",
+   "direction": "B->A",
+   "tgt": "de",
+   "n": 100,
+   "slots_changed_median": 3.0,
+   "identical_level0": 0.11,
+   "level0_progress": [
+    0.16317468881607056,
+    0.18556701030927836,
+    97
+   ],
+   "level0_keep_A": 0.8893594145774841,
+   "examples": [
+    {
+     "A": "Die Berichte wurden von der EPAR über die Legislative Library veröffentlicht und wurden im Jahr 1995 veröffentlicht und veröffentlicht worden sein Ende 2007 veröffentlicht worden sein",
+     "B": "Die Berichtigung und Schlussfolgerung des EPRD ist das Legislative des britischen Bibliotheksverzeichnisse für das Web verfügbar",
+     "level0": "Die Berichte wurden von der Ausschußung des Ausschusses für Forschung erstellt und wurden über die Legislature Library veröffentlicht und veröffentlicht worden sein"
+    },
+    {
+     "A": "Meine ganze Zeuge waren oben oben oben oben",
+     "B": "Ich habe alles Zeugen überstanden",
+     "level0": "Meine ganze Zeuge waren oben oben oben oben oben oben oben oben oben unten gewesen"
+    },
+    {
+     "A": "Das war meine Grund dafür ausgegangen und die Computerisierung wurde von Japan geschrieben und alles unter dem Einsatz seiner Operation verfasst wurde",
+     "B": "Das ist das Grund dafür gekommen wie ich die Computerkugel gestohlen habe und dass sie alle Operationen auf Japan gefertigt wurden",
+     "level0": "Das war das Grund dafür ausgegangen als die Computertechnik vernichtete Japan alles seine Operation im Japan zu schreiben"
+    },
+    {
+     "A": "Howell und seine Verdächtige sind Angst vor einer Wahl zu machen und sich zu manipulieren",
+     "B": "Howell und Cock halten sich mit einem Verdächtigen zu einem Volk zu schrecklichen Wahlen zu machen",
+     "level0": "Howell und seine Verdächtige sind Angst vor einer Wahl zu machen und sich zu manipulieren"
+    },
+    {
+     "A": "Wir haben unsere eigenen Lösungen gefunden haben",
+     "B": "Wir müssen unsere eigenen Lösungen finden",
+     "level0": "Wir haben unsere eigenen Lösungen gefunden haben"
+    }
+   ],
+   "stack_progress": [
+    0.20682594180107117,
+    0.20618556701030927,
+    97
+   ],
+   "stack_keep_A": 0.8868075013160706,
+   "control_progress": [
+    0.23019957542419434,
+    0.23711340206185566,
+    97
+   ],
+   "control_keep_A": 0.8325752019882202
+  },
+  {
+   "lang": "fr",
+   "factor": "negation",
+   "direction": "A->B",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 51.0,
+   "identical_level0": 0.03,
+   "neg_clean": 99,
+   "neg_decodable": 75,
+   "level0_progress": [
+    0.23236620426177979,
+    0.29292929292929293,
+    99
+   ],
+   "level0_keep_A": 0.8049740791320801,
+   "level0_flip": 0.24,
+   "examples": [
+    {
+     "A": "You invent everything you can do",
+     "B": "You don ́t invent everything else",
+     "level0": "You invent everything that makes senseless"
+    },
+    {
+     "A": "Deeks that shitty shitty shitty year or three years ago when this program went through the first time on the radio station",
+     "B": "Your Dexter tried this shitty shitty thing 30 years ago when you passed the first stage on radio station",
+     "level0": "Dexter tried this shitty shitty shitty shitty thing 30 years ago when this program went through North Poles first time"
+    },
+    {
+     "A": "We call for congratulations to Joshua Joshua and he will immediately return home immediately after home",
+     "B": "We don ́t want to congratulate your nephew Joshua Joshua and then go home immediately after home",
+     "level0": "We call upon her every congratulations to Joshua Joshua and his brother immediately return home immediately afterwards"
+    },
+    {
+     "A": "If your Lord wishes to make one nation one nation without one nation who has done it again and never does it ever turn away from Himself",
+     "B": "If your Lord had chosen anyone in one nation without being one nation who would never cease to exist without His helpers",
+     "level0": "If your Lord wishes to make one nation one nation free from one nation and then they will not be wronged"
+    },
+    {
+     "A": "Each tribe chooses three masterpieces each three sculpture puzzles",
+     "B": "Each tribe chooses three amateur fishers without each other puzzle puzzles",
+     "level0": "Each tribe chooses three creative penguins each create puzzles"
+    }
+   ],
+   "stack_progress": [
+    0.2841888666152954,
+    0.31313131313131315,
+    99
+   ],
+   "stack_keep_A": 0.7983662486076355,
+   "stack_flip": 0.36,
+   "control_progress": [
+    0.22589460015296936,
+    0.13131313131313133,
+    99
+   ],
+   "control_keep_A": 0.7241641283035278,
+   "control_flip": 0.09333333333333334
+  },
+  {
+   "lang": "fr",
+   "factor": "negation",
+   "direction": "A->B",
+   "tgt": "fr",
+   "n": 100,
+   "slots_changed_median": 51.0,
+   "identical_level0": 0.03,
+   "neg_clean": 99,
+   "neg_decodable": 82,
+   "level0_progress": [
+    0.24142986536026,
+    0.2755102040816326,
+    98
+   ],
+   "level0_keep_A": 0.7766349911689758,
+   "level0_flip": 0.34146341463414637,
+   "examples": [
+    {
+     "A": "Tu inventes tout ça pour toi et moi",
+     "B": "Tu ne fais pas tout ça pour toi et toi aussi vite",
+     "level0": "Tu inventes tout ça pour moi et tout ça"
+    },
+    {
+     "A": "De ce putain de merde cdreau est passé trois ans après ce programme de radio pour une première fois à l ́époque où il sagit d ́une chanson sur le lieu de la radio",
+     "B": "Tu n essaies pas cette merde ou 30 ans quand couvre cetteémission sur la radio avant la première fois",
+     "level0": "Dites ce désordre et trois ans après ce programme commence à l ́époque où l ́émission n saurait pas passé avant l premier tournant sur la radio pour une scène"
+    },
+    {
+     "A": "Nous appelons à votre anniversaire Joshua Joshua et vous rentrons immédiatement chez lui chez moi chez lui dans une maison rentrant immédiatement après rentrer chez nous chez vous",
+     "B": "Nous ne voulons pas appeler son frère Joshua Joshua et lui rendre bientôt chez lui chez nous dans la maison de rentrer chez lui immédiatement après avoir été rentrée chez lui",
+     "level0": "Nous appelons à tous vos enfants à saluer leur frère Joshua et lui rendre immédiatement rentrer chez lui chez moi chez lui dans une maison rentrant immédiatement après rentrer chez nous"
+    },
+    {
+     "A": "Si votre Seigneur voulait être un peuple seul et ne leur laisserait jamais tomber",
+     "B": "Et si votre Seigneur avait voulu faire naître qu un seul pays et ne leur reproduisent jamais",
+     "level0": "Si votre Seigneur voulait être un peuple seul et il ne faut pas faire des choses qu nous ne ferions jamais à l ́égard des autres"
+    },
+    {
+     "A": "Chaque tribu triangle choisi trois créateurs de poissons délicate chaque tribulation",
+     "B": "Chaque tribu ne choisit pas trois nageurs tribaliques créatifs pour créer des créatures créatrices",
+     "level0": "Chaque tribu triangle choisit trois créateurs de poissons débiles et créateurs créatifs"
+    }
+   ],
+   "stack_progress": [
+    0.3311801254749298,
+    0.3877551020408163,
+    98
+   ],
+   "stack_keep_A": 0.771614134311676,
+   "stack_flip": 0.4268292682926829,
+   "control_progress": [
+    0.23271043598651886,
+    0.1836734693877551,
+    98
+   ],
+   "control_keep_A": 0.7176494598388672,
+   "control_flip": 0.15853658536585366
+  },
+  {
+   "lang": "fr",
+   "factor": "negation",
+   "direction": "B->A",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 51.0,
+   "identical_level0": 0.03,
+   "neg_clean": 99,
+   "neg_decodable": 75,
+   "level0_progress": [
+    0.2260231077671051,
+    0.32323232323232326,
+    99
+   ],
+   "level0_keep_A": 0.810334324836731,
+   "level0_flip": 0.30666666666666664,
+   "examples": [
+    {
+     "A": "You don ́t invent everything else",
+     "B": "You invent everything you can do",
+     "level0": "You invent everything you can do"
+    },
+    {
+     "A": "Your Dexter tried this shitty shitty thing 30 years ago when you passed the first stage on radio station",
+     "B": "Deeks that shitty shitty shitty year or three years ago when this program went through the first time on the radio station",
+     "level0": "Dexter didn ́t try this shitty thing at 30 years ago when it happened first time on radio starboard"
+    },
+    {
+     "A": "We don ́t want to congratulate your nephew Joshua Joshua and then go home immediately after home",
+     "B": "We call for congratulations to Joshua Joshua and he will immediately return home immediately after home",
+     "level0": "We don ́t want to congratulate your brother Joshua Joshua and then go home immediately after home"
+    },
+    {
+     "A": "If your Lord had chosen anyone in one nation without being one nation who would never cease to exist without His helpers",
+     "B": "If your Lord wishes to make one nation one nation without one nation who has done it again and never does it ever turn away from Himself",
+     "level0": "And if thy Lord had chosen one nation without one nation who would never cease to exist without His helpers nor did they ever turn away from Himself"
+    },
+    {
+     "A": "Each tribe chooses three amateur fishers without each other puzzle puzzles",
+     "B": "Each tribe chooses three masterpieces each three sculpture puzzles",
+     "level0": "Each tribe chooses three three amateur fishers each three digits of puzzle puzzles"
+    }
+   ],
+   "stack_progress": [
+    0.32264578342437744,
+    0.36363636363636365,
+    99
+   ],
+   "stack_keep_A": 0.7818137407302856,
+   "stack_flip": 0.41333333333333333,
+   "control_progress": [
+    0.28762349486351013,
+    0.1919191919191919,
+    99
+   ],
+   "control_keep_A": 0.730958104133606,
+   "control_flip": 0.10666666666666667
+  },
+  {
+   "lang": "fr",
+   "factor": "negation",
+   "direction": "B->A",
+   "tgt": "fr",
+   "n": 100,
+   "slots_changed_median": 51.0,
+   "identical_level0": 0.03,
+   "neg_clean": 99,
+   "neg_decodable": 82,
+   "level0_progress": [
+    0.25580693781375885,
+    0.336734693877551,
+    98
+   ],
+   "level0_keep_A": 0.7962765693664551,
+   "level0_flip": 0.35365853658536583,
+   "examples": [
+    {
+     "A": "Tu ne fais pas tout ça pour toi et toi aussi vite",
+     "B": "Tu inventes tout ça pour toi et moi",
+     "level0": "Tu n vas pas faire tout ça pour toi et toi"
+    },
+    {
+     "A": "Tu n essaies pas cette merde ou 30 ans quand couvre cetteémission sur la radio avant la première fois",
+     "B": "De ce putain de merde cdreau est passé trois ans après ce programme de radio pour une première fois à l ́époque où il sagit d ́une chanson sur le lieu de la radio",
+     "level0": "De ta petite merde ne t a pas essayé d faire ça pendant 30 ans quand couvre cetteémission sur la radio avant la première fois"
+    },
+    {
+     "A": "Nous ne voulons pas appeler son frère Joshua Joshua et lui rendre bientôt chez lui chez nous dans la maison de rentrer chez lui immédiatement après avoir été rentrée chez lui",
+     "B": "Nous appelons à votre anniversaire Joshua Joshua et vous rentrons immédiatement chez lui chez moi chez lui dans une maison rentrant immédiatement après rentrer chez nous chez vous",
+     "level0": "Nous ne voulons pas appeler votre frère Joshua Joshua Joshua et lui arriver immédiatement à rentrer chez lui chez nous chez nous dans la maison de retour à nouveau"
+    },
+    {
+     "A": "Et si votre Seigneur avait voulu faire naître qu un seul pays et ne leur reproduisent jamais",
+     "B": "Si votre Seigneur voulait être un peuple seul et ne leur laisserait jamais tomber",
+     "level0": "Et si votre Seigneur avait voulu faire naître qu un seul pays et ne leur reproduisent jamais"
+    },
+    {
+     "A": "Chaque tribu ne choisit pas trois nageurs tribaliques créatifs pour créer des créatures créatrices",
+     "B": "Chaque tribu triangle choisi trois créateurs de poissons délicate chaque tribulation",
+     "level0": "Chaque tribu ne sélectionnera pas trois nageurs trois créateurs dénommés par des puzzles créatifs"
+    }
+   ],
+   "stack_progress": [
+    0.3128080368041992,
+    0.41836734693877553,
+    98
+   ],
+   "stack_keep_A": 0.784924328327179,
+   "stack_flip": 0.45121951219512196,
+   "control_progress": [
+    0.24134522676467896,
+    0.21428571428571427,
+    98
+   ],
+   "control_keep_A": 0.7092491984367371,
+   "control_flip": 0.14634146341463414
+  },
+  {
+   "lang": "fr",
+   "factor": "tense",
+   "direction": "A->B",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 3.0,
+   "identical_level0": 0.1,
+   "level0_progress": [
+    0.1609027087688446,
+    0.22448979591836735,
+    98
+   ],
+   "level0_keep_A": 0.8581039905548096,
+   "examples": [
+    {
+     "A": "And you sit here like you don ́t understand how I am saying that you are saying shitty shitty",
+     "B": "And you were sitting here like you didn ́t understand how I was saying that you were fucking fucking bitch",
+     "level0": "And you sit here like you didn ́t understand how I feel like saying hello fuckin"
+    },
+    {
+     "A": "Most scientists are blindfolders",
+     "B": "Most scientists refused to believe that they were lying",
+     "level0": "Most men are men who refuse to believe"
+    },
+    {
+     "A": "We are all men who try to protect our land by merely squattering our land",
+     "B": "We were only men trying to protect our little earth without our little earthquake",
+     "level0": "We all are men who try to protect us from the earthquake we try to dig up our little earthquake"
+    },
+    {
+     "A": "It is an authentic style of the river and the motel of Monegana without which she keeps her safe",
+     "B": "She was really a real fancy style and her exorcism didn ́t keep her running away",
+     "level0": "She is truly an iconic heritage and her sole name is Monegana without her superpower"
+    },
+    {
+     "A": "I believe we will give each chance to perfect odds",
+     "B": "I thought I gave everyone a chance to give him all his chances",
+     "level0": "I believe he gave everyone a chance to get a proper chance"
+    }
+   ],
+   "stack_progress": [
+    0.33017218112945557,
+    0.29591836734693877,
+    98
+   ],
+   "stack_keep_A": 0.8582352995872498,
+   "control_progress": [
+    0.21012988686561584,
+    0.23469387755102042,
+    98
+   ],
+   "control_keep_A": 0.8281457424163818
+  },
+  {
+   "lang": "fr",
+   "factor": "tense",
+   "direction": "A->B",
+   "tgt": "fr",
+   "n": 100,
+   "slots_changed_median": 3.0,
+   "identical_level0": 0.1,
+   "level0_progress": [
+    0.21018913388252258,
+    0.22105263157894736,
+    95
+   ],
+   "level0_keep_A": 0.8674030900001526,
+   "examples": [
+    {
+     "A": "Et tu es là si tu ne comprends pas comment je suis là comme ça dit que tu parles comme ça va dire ce qu j dis",
+     "B": "Et tu as été là si tu ne comprendais pas ce que j t ai dit criminelle",
+     "level0": "Et tu métais là comme ça parce que tu ne comprends pas comprendre ce qu j suis à dire"
+    },
+    {
+     "A": "Les scientifiques sont plus nombreux menteurs qui refusent de croire",
+     "B": "Les scientifiques ont refusé à croire qu les hommes ne sont pas convaincus qu les hommes ont été menés par leur doctrine",
+     "level0": "Les hommes ont beaucoup menteur à croire qu criminels sont refusés à l ́esprit"
+    },
+    {
+     "A": "Nous sommes tous les hommes du caverneur des caves pour protéger notre petit sens",
+     "B": "Nous avons été tous les hommes qui essayent de protéger notre petit petit petit petit terrain",
+     "level0": "Nous sommes tous les hommes du caverneur des caves pour protéger notre petit terrain"
+    },
+    {
+     "A": "Elle est vraiment une histoire gérée avec la roche et la roche qui ne porte pas derrière elle",
+     "B": "Elle était vraiment une histoire gérée et seule chose dans le Monénénégas qui ne lui restait pas",
+     "level0": "Elle est vraiment une vraie histoire car elle est une histoire gérée avec Monépol qui ne porte pas derrière la rocheuse"
+    },
+    {
+     "A": "Je crois qu nous voulons donner une chance parfaite",
+     "B": "J pensais avoir donné tout son chance d ́être parfaite",
+     "level0": "Je crois qu tout le monde lui donne une chance parfaite"
+    }
+   ],
+   "stack_progress": [
+    0.13109567761421204,
+    0.16842105263157894,
+    95
+   ],
+   "stack_keep_A": 0.8946481347084045,
+   "control_progress": [
+    0.2701442241668701,
+    0.25263157894736843,
+    95
+   ],
+   "control_keep_A": 0.8075400590896606
+  },
+  {
+   "lang": "fr",
+   "factor": "tense",
+   "direction": "B->A",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 3.0,
+   "identical_level0": 0.1,
+   "level0_progress": [
+    0.1492752730846405,
+    0.17346938775510204,
+    98
+   ],
+   "level0_keep_A": 0.8847226500511169,
+   "examples": [
+    {
+     "A": "And you were sitting here like you didn ́t understand how I was saying that you were fucking fucking bitch",
+     "B": "And you sit here like you don ́t understand how I am saying that you are saying shitty shitty",
+     "level0": "And you were sitting here because you didn ́t understand how I was saying that you were fucking fucking bitch"
+    },
+    {
+     "A": "Most scientists refused to believe that they were lying",
+     "B": "Most scientists are blindfolders",
+     "level0": "Most scientists have refused to believe that they were falsely deluded"
+    },
+    {
+     "A": "We were only men trying to protect our little earth without our little earthquake",
+     "B": "We are all men who try to protect our land by merely squattering our land",
+     "level0": "We were only men trying to protect our little earthquake"
+    },
+    {
+     "A": "She was really a real fancy style and her exorcism didn ́t keep her running away",
+     "B": "It is an authentic style of the river and the motel of Monegana without which she keeps her safe",
+     "level0": "It was a real style of rocket and the locomotive which kept without being kept away from it"
+    },
+    {
+     "A": "I thought I gave everyone a chance to give him all his chances",
+     "B": "I believe we will give each chance to perfect odds",
+     "level0": "I thought we could give each other a chance to make sure that we were lucky"
+    }
+   ],
+   "stack_progress": [
+    0.18792513012886047,
+    0.23469387755102042,
+    98
+   ],
+   "stack_keep_A": 0.8946032524108887,
+   "control_progress": [
+    0.23988476395606995,
+    0.21428571428571427,
+    98
+   ],
+   "control_keep_A": 0.8160563707351685
+  },
+  {
+   "lang": "fr",
+   "factor": "tense",
+   "direction": "B->A",
+   "tgt": "fr",
+   "n": 100,
+   "slots_changed_median": 3.0,
+   "identical_level0": 0.1,
+   "level0_progress": [
+    0.14052900671958923,
+    0.15789473684210525,
+    95
+   ],
+   "level0_keep_A": 0.8828485012054443,
+   "examples": [
+    {
+     "A": "Et tu as été là si tu ne comprendais pas ce que j t ai dit criminelle",
+     "B": "Et tu es là si tu ne comprends pas comment je suis là comme ça dit que tu parles comme ça va dire ce qu j dis",
+     "level0": "Et tu as été là si tu ne comprendais pas comment je suis censé être ton putain de putain"
+    },
+    {
+     "A": "Les scientifiques ont refusé à croire qu les hommes ne sont pas convaincus qu les hommes ont été menés par leur doctrine",
+     "B": "Les scientifiques sont plus nombreux menteurs qui refusent de croire",
+     "level0": "Les scientifiques ont refusé à croire qu les scientifiques ont été menés par des hommes scientifiques et non plus menacées par des hommes scientifiques"
+    },
+    {
+     "A": "Nous avons été tous les hommes qui essayent de protéger notre petit petit petit petit terrain",
+     "B": "Nous sommes tous les hommes du caverneur des caves pour protéger notre petit sens",
+     "level0": "Nous avons été tous les hommes de la cave pour essayer de protéger notre petit petit petit petit terrain"
+    },
+    {
+     "A": "Elle était vraiment une histoire gérée et seule chose dans le Monénénégas qui ne lui restait pas",
+     "B": "Elle est vraiment une histoire gérée avec la roche et la roche qui ne porte pas derrière elle",
+     "level0": "Celle était une vraie forme de rocher et une seule roche qui ne se trouvait pas encore"
+    },
+    {
+     "A": "J pensais avoir donné tout son chance d ́être parfaite",
+     "B": "Je crois qu nous voulons donner une chance parfaite",
+     "level0": "J pensais qu nous voulons donner tout leur chance d ́être raisonnablement résoluble"
+    }
+   ],
+   "stack_progress": [
+    0.23968660831451416,
+    0.24210526315789474,
+    95
+   ],
+   "stack_keep_A": 0.8754159808158875,
+   "control_progress": [
+    0.24136197566986084,
+    0.17894736842105263,
+    95
+   ],
+   "control_keep_A": 0.8299098014831543
+  },
+  {
+   "lang": "es",
+   "factor": "negation",
+   "direction": "A->B",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 52.5,
+   "identical_level0": 0.01,
+   "neg_clean": 96,
+   "neg_decodable": 65,
+   "level0_progress": [
+    0.257008358836174,
+    0.23958333333333334,
+    96
+   ],
+   "level0_keep_A": 0.8148319721221924,
+   "level0_flip": 0.24615384615384617,
+   "examples": [
+    {
+     "A": "They invented everything this time",
+     "B": "They didn inventively invent everything",
+     "level0": "They invented everything this time"
+    },
+    {
+     "A": "Witten escaped his body at Calvington and buried somewhere near Charleston",
+     "B": "Witten cannot escape from the body responsible for his car and cover everything near Charleston",
+     "level0": "Witten escaped the body responsible for his car and buried everything nearby Charleston"
+    },
+    {
+     "A": "Some people show secret privileges like government privileges",
+     "B": "Some people don see secrets like privileged government privileges",
+     "level0": "Some people show secrets like privileges and privileges are not governing government privileges"
+    },
+    {
+     "A": "You know how long we spent dancing Dante",
+     "B": "You know we haven gone too far",
+     "level0": "You know how long we spent dancing Dan"
+    },
+    {
+     "A": "Dr Brennan is cold and distant and stranger than Mrs Corinney",
+     "B": "Dr Brenner isn cold and distant and stranger than doctors",
+     "level0": "Dr Brennan is cold and distant from the stranger and stranger"
+    }
+   ],
+   "stack_progress": [
+    0.3532347083091736,
+    0.4166666666666667,
+    96
+   ],
+   "stack_keep_A": 0.7948939800262451,
+   "stack_flip": 0.4,
+   "control_progress": [
+    0.26502805948257446,
+    0.21875,
+    96
+   ],
+   "control_keep_A": 0.7391155958175659,
+   "control_flip": 0.12307692307692308
+  },
+  {
+   "lang": "es",
+   "factor": "negation",
+   "direction": "A->B",
+   "tgt": "es",
+   "n": 100,
+   "slots_changed_median": 52.5,
+   "identical_level0": 0.01,
+   "neg_clean": 96,
+   "neg_decodable": 86,
+   "level0_progress": [
+    0.25385497510433197,
+    0.27,
+    100
+   ],
+   "level0_keep_A": 0.7989915609359741,
+   "level0_flip": 0.2558139534883721,
+   "examples": [
+    {
+     "A": "Ellos inventaron todo esto",
+     "B": "No inventaron todo esto",
+     "level0": "Ellos inventaron todo esto"
+    },
+    {
+     "A": "Witten se escapó el cuerpo de Darcyton y lo entierra en algún lugar cerca de Charleston",
+     "B": "Witten no salió al cuerpo del cuerpo y se llenará todo el lugar cerca del Monte Charleston",
+     "level0": "Con claridad con el cuerpo de Darcyton y su cadáver se cayó alrededor del área cercana del Charleston"
+    },
+    {
+     "A": "Algunos han visto secretos como gobernanza privilegiada por los gobernantes",
+     "B": "Algunos no vean secretos como gobernantes privilegiados",
+     "level0": "Algunos elementos vencieran secretos como el privilegio del gobierno gobernante del Gobernador"
+    },
+    {
+     "A": "Sabes cuánto nos hemos pasado mucho tiempo Dante",
+     "B": "Sabes que no hemos pasado mucho tiempo Dan",
+     "level0": "Sabes que nos hemos pasado mucho tiempo Dan"
+    },
+    {
+     "A": "El Dr Brennan es frío y distante y extraño",
+     "B": "El Dr Brenner no es frío y distante y extraño",
+     "level0": "El Dr Brennan está fríamente fría y distante en el sentido extraño"
+    }
+   ],
+   "stack_progress": [
+    0.36744920909404755,
+    0.43,
+    100
+   ],
+   "stack_keep_A": 0.7880197763442993,
+   "stack_flip": 0.4069767441860465,
+   "control_progress": [
+    0.26970717310905457,
+    0.22,
+    100
+   ],
+   "control_keep_A": 0.7376948595046997,
+   "control_flip": 0.16279069767441862
+  },
+  {
+   "lang": "es",
+   "factor": "negation",
+   "direction": "B->A",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 52.5,
+   "identical_level0": 0.01,
+   "neg_clean": 96,
+   "neg_decodable": 65,
+   "level0_progress": [
+    0.2911190986633301,
+    0.3125,
+    96
+   ],
+   "level0_keep_A": 0.7879481315612793,
+   "level0_flip": 0.3076923076923077,
+   "examples": [
+    {
+     "A": "They didn inventively invent everything",
+     "B": "They invented everything this time",
+     "level0": "They invented everything they did"
+    },
+    {
+     "A": "Witten cannot escape from the body responsible for his car and cover everything near Charleston",
+     "B": "Witten escaped his body at Calvington and buried somewhere near Charleston",
+     "level0": "Witten cannot escape from your body and fill everything near Charleston"
+    },
+    {
+     "A": "Some people don see secrets like privileged government privileges",
+     "B": "Some people show secret privileges like government privileges",
+     "level0": "Some people don see secret powers like government privileges"
+    },
+    {
+     "A": "You know we haven gone too far",
+     "B": "You know how long we spent dancing Dante",
+     "level0": "You know how much Dan has done since we went through here"
+    },
+    {
+     "A": "Dr Brenner isn cold and distant and stranger than doctors",
+     "B": "Dr Brennan is cold and distant and stranger than Mrs Corinney",
+     "level0": "Dr Brennan isn not cold and distant and strange doctors"
+    }
+   ],
+   "stack_progress": [
+    0.442772313952446,
+    0.4583333333333333,
+    96
+   ],
+   "stack_keep_A": 0.7839811444282532,
+   "stack_flip": 0.46153846153846156,
+   "control_progress": [
+    0.27104073762893677,
+    0.20833333333333334,
+    96
+   ],
+   "control_keep_A": 0.7182314991950989,
+   "control_flip": 0.07692307692307693
+  },
+  {
+   "lang": "es",
+   "factor": "negation",
+   "direction": "B->A",
+   "tgt": "es",
+   "n": 100,
+   "slots_changed_median": 52.5,
+   "identical_level0": 0.01,
+   "neg_clean": 96,
+   "neg_decodable": 86,
+   "level0_progress": [
+    0.329818919301033,
+    0.34,
+    100
+   ],
+   "level0_keep_A": 0.7834082841873169,
+   "level0_flip": 0.4418604651162791,
+   "examples": [
+    {
+     "A": "No inventaron todo esto",
+     "B": "Ellos inventaron todo esto",
+     "level0": "Ellos inventaron todo esto"
+    },
+    {
+     "A": "Witten no salió al cuerpo del cuerpo y se llenará todo el lugar cerca del Monte Charleston",
+     "B": "Witten se escapó el cuerpo de Darcyton y lo entierra en algún lugar cerca de Charleston",
+     "level0": "Witten no salió al cuerpo del cuerpo y se encuentra allí cerca de Charlotteton"
+    },
+    {
+     "A": "Algunos no vean secretos como gobernantes privilegiados",
+     "B": "Algunos han visto secretos como gobernanza privilegiada por los gobernantes",
+     "level0": "Algunos no vean secretos como gobernanza privilegiada por el gobierno"
+    },
+    {
+     "A": "Sabes que no hemos pasado mucho tiempo Dan",
+     "B": "Sabes cuánto nos hemos pasado mucho tiempo Dante",
+     "level0": "Sabes cuánto nos hemos pasado mucho tiempo Dan"
+    },
+    {
+     "A": "El Dr Brenner no es frío y distante y extraño",
+     "B": "El Dr Brennan es frío y distante y extraño",
+     "level0": "El Dr Brenner no es frío y extraño y extraño"
+    }
+   ],
+   "stack_progress": [
+    0.4232763946056366,
+    0.46,
+    100
+   ],
+   "stack_keep_A": 0.7747918963432312,
+   "stack_flip": 0.5116279069767442,
+   "control_progress": [
+    0.23738661408424377,
+    0.18,
+    100
+   ],
+   "control_keep_A": 0.7205142974853516,
+   "control_flip": 0.1744186046511628
+  },
+  {
+   "lang": "es",
+   "factor": "tense",
+   "direction": "A->B",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 3.0,
+   "identical_level0": 0.02,
+   "level0_progress": [
+    0.12298966944217682,
+    0.10204081632653061,
+    98
+   ],
+   "level0_keep_A": 0.902108371257782,
+   "examples": [
+    {
+     "A": "I don ́t know what happened here but I came here",
+     "B": "I wasn pretty sure what happened just came out there",
+     "level0": "I don ́t know what happened between me and I just came here and I came out here"
+    },
+    {
+     "A": "The sense of security also increases its sympathy and its political will become increasingly severely gravely displaced by political parties today",
+     "B": "His sense of security was also increased because his political parties were fully committed to political terrorism because they were seriously dissatisfied by their own deaths and their political participation in the elections of the President of Iraq in December",
+     "level0": "The sense of security is also attributable to their sympathy and their political will become increasingly serious against their political parties today"
+    },
+    {
+     "A": "He looks pretty full of hungry and hungry",
+     "B": "I had a pretty big look at her hungry and hungry faces",
+     "level0": "He looks pretty fat and starved hungry"
+    },
+    {
+     "A": "My clothes are on the corner of the sofa",
+     "B": "My clothes were in the corner of the sofa room",
+     "level0": "My clothes are on the corner of the sofa room"
+    },
+    {
+     "A": "I am here to pick up my son",
+     "B": "He was here picking me up my son",
+     "level0": "I am here to pick up my son"
+    }
+   ],
+   "stack_progress": [
+    0.18997180461883545,
+    0.20408163265306123,
+    98
+   ],
+   "stack_keep_A": 0.877856969833374,
+   "control_progress": [
+    0.23643681406974792,
+    0.12244897959183673,
+    98
+   ],
+   "control_keep_A": 0.825958788394928
+  },
+  {
+   "lang": "es",
+   "factor": "tense",
+   "direction": "A->B",
+   "tgt": "es",
+   "n": 100,
+   "slots_changed_median": 3.0,
+   "identical_level0": 0.02,
+   "level0_progress": [
+    0.13560765981674194,
+    0.21212121212121213,
+    99
+   ],
+   "level0_keep_A": 0.8832929134368896,
+   "examples": [
+    {
+     "A": "No sé qué pasaría aquí pero acabo de llegar aquí",
+     "B": "No estaba seguro de lo que pasó pero acabo de llegar allí",
+     "level0": "No sé qué pasaría aquí pero acabo de llegar a la casa"
+    },
+    {
+     "A": "La seguridad del Estado también es sumamente tributada por sus condenadores porque sus votos son gravemente gravemente crímenes políticos",
+     "B": "La seguridad del bienestar y su sacrificio también aumentan sus posibilidades de ser mayormente ocupada por sus partidos políticos y políticos en generalizada por la muerte de la Unión Europea y el Estado miembro del país entero en el país en",
+     "level0": "La seguridad del sentimiento es también debido al sufragio y también sus partidarios políticos están siendo graves y sus objetivos políticos están siendo graves para la seguridad pública y también en el sentido de que se hagan una mayor crisis política en"
+    },
+    {
+     "A": "Tiene mucho aspecto muy bonito y está hambriento",
+     "B": "Tenía una mirada muy hermosa y hundido",
+     "level0": "Tiene un aspecto muy bonito y está hambriento"
+    },
+    {
+     "A": "Mi ropa está en el lado izquierdo",
+     "B": "Mi ropa estaba en el asiento con el sofa",
+     "level0": "Mi ropa está en el lado izquierdo"
+    },
+    {
+     "A": "Estoy aquí para recoger mi hijo",
+     "B": "Estaba aquí para recoger mi hijo",
+     "level0": "Estoy aquí para recoger mi hijo"
+    }
+   ],
+   "stack_progress": [
+    0.27028927206993103,
+    0.2727272727272727,
+    99
+   ],
+   "stack_keep_A": 0.8822751045227051,
+   "control_progress": [
+    0.2647176682949066,
+    0.20202020202020202,
+    99
+   ],
+   "control_keep_A": 0.8403986096382141
+  },
+  {
+   "lang": "es",
+   "factor": "tense",
+   "direction": "B->A",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 3.0,
+   "identical_level0": 0.02,
+   "level0_progress": [
+    0.18637323379516602,
+    0.25510204081632654,
+    98
+   ],
+   "level0_keep_A": 0.8675292730331421,
+   "examples": [
+    {
+     "A": "I wasn pretty sure what happened just came out there",
+     "B": "I don ́t know what happened here but I came here",
+     "level0": "I don ́t know what happened to me just came out there"
+    },
+    {
+     "A": "His sense of security was also increased because his political parties were fully committed to political terrorism because they were seriously dissatisfied by their own deaths and their political participation in the elections of the President of Iraq in December",
+     "B": "The sense of security also increases its sympathy and its political will become increasingly severely gravely displaced by political parties today",
+     "level0": "The security of its own sympathy and its sacrifices increased because they were also politically motivated by their political parties completely overwhelmingly distorted their political positions and their political positions were severely overw"
+    },
+    {
+     "A": "I had a pretty big look at her hungry and hungry faces",
+     "B": "He looks pretty full of hungry and hungry",
+     "level0": "I had a pretty big look at her hungry and hungry faces"
+    },
+    {
+     "A": "My clothes were in the corner of the sofa room",
+     "B": "My clothes are on the corner of the sofa",
+     "level0": "My clothes were sitting around corners with her back"
+    },
+    {
+     "A": "He was here picking me up my son",
+     "B": "I am here to pick up my son",
+     "level0": "He was here picking me up my son"
+    }
+   ],
+   "stack_progress": [
+    0.19615896046161652,
+    0.29591836734693877,
+    98
+   ],
+   "stack_keep_A": 0.8680180311203003,
+   "control_progress": [
+    0.27014902234077454,
+    0.21428571428571427,
+    98
+   ],
+   "control_keep_A": 0.8022962808609009
+  },
+  {
+   "lang": "es",
+   "factor": "tense",
+   "direction": "B->A",
+   "tgt": "es",
+   "n": 100,
+   "slots_changed_median": 3.0,
+   "identical_level0": 0.02,
+   "level0_progress": [
+    0.11491575837135315,
+    0.1717171717171717,
+    99
+   ],
+   "level0_keep_A": 0.8795566558837891,
+   "examples": [
+    {
+     "A": "No estaba seguro de lo que pasó pero acabo de llegar allí",
+     "B": "No sé qué pasaría aquí pero acabo de llegar aquí",
+     "level0": "No estaba seguro de lo que pasó pero acabo de llegar allí"
+    },
+    {
+     "A": "La seguridad del bienestar y su sacrificio también aumentan sus posibilidades de ser mayormente ocupada por sus partidos políticos y políticos en generalizada por la muerte de la Unión Europea y el Estado miembro del país entero en el país en",
+     "B": "La seguridad del Estado también es sumamente tributada por sus condenadores porque sus votos son gravemente gravemente crímenes políticos",
+     "level0": "La seguridad del bienestar y su sacrificio también aumentan sus posibilidades de ser mayormente ocupada por sus partidos políticos y políticos en generalizada"
+    },
+    {
+     "A": "Tenía una mirada muy hermosa y hundido",
+     "B": "Tiene mucho aspecto muy bonito y está hambriento",
+     "level0": "Tenía una mirada muy hermosa y hundido"
+    },
+    {
+     "A": "Mi ropa estaba en el asiento con el sofa",
+     "B": "Mi ropa está en el lado izquierdo",
+     "level0": "Mi ropa estaba en el lado de la mesa con una vuelta"
+    },
+    {
+     "A": "Estaba aquí para recoger mi hijo",
+     "B": "Estoy aquí para recoger mi hijo",
+     "level0": "Estaba aquí para recoger mi hijo"
+    }
+   ],
+   "stack_progress": [
+    0.2493872046470642,
+    0.25252525252525254,
+    99
+   ],
+   "stack_keep_A": 0.88429856300354,
+   "control_progress": [
+    0.23683714866638184,
+    0.16161616161616163,
+    99
+   ],
+   "control_keep_A": 0.8177437782287598
+  },
+  {
+   "lang": "ru",
+   "factor": "negation",
+   "direction": "A->B",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 47.5,
+   "identical_level0": 0.06,
+   "neg_clean": 98,
+   "neg_decodable": 76,
+   "level0_progress": [
+    0.28617653250694275,
+    0.30303030303030304,
+    99
+   ],
+   "level0_keep_A": 0.7805111408233643,
+   "level0_flip": 0.25,
+   "examples": [
+    {
+     "A": "You should stay in bed",
+     "B": "You shouldn stay in bed",
+     "level0": "You shouldn stay in bedtime"
+    },
+    {
+     "A": "The coral team and coaches live in October next year in October",
+     "B": "The coral team and coaches are not living in October 2009.",
+     "level0": "The coral team and Miami fans live here next January and next January"
+    },
+    {
+     "A": "We needed seven years to complete the project for completion of all development projects",
+     "B": "We haven no longer needed seven years to complete the project without completion of all development projects",
+     "level0": "We needed seven years to complete its work without any projection to complete its design project without any projection to build its own design"
+    },
+    {
+     "A": "After his death on May 7th 1975 Kanagawa became his brother of two brothers of Siberia and became Chainataya Potahia who won the election campaign in May 2010.",
+     "B": "After his death of his brother Kannagawa became his brother of Sikanawa in July 2006, he was not placed on his second brothership after his death in May 2009.",
+     "level0": "After his death of brother Harbor City in977 he decided to be his brother Baiuwanta who won his brother to death after his death on May 29, 2012, and his brother was killed by his sister La Sabiawaya Po"
+    },
+    {
+     "A": "If you do this thing you kill Keith dead soon enough",
+     "B": "If you do this thing Kate won not die",
+     "level0": "If you don ́t do this thing Kate won sooner"
+    }
+   ],
+   "stack_progress": [
+    0.35846078395843506,
+    0.40404040404040403,
+    99
+   ],
+   "stack_keep_A": 0.7726642489433289,
+   "stack_flip": 0.40789473684210525,
+   "control_progress": [
+    0.2402973771095276,
+    0.20202020202020202,
+    99
+   ],
+   "control_keep_A": 0.7368261218070984,
+   "control_flip": 0.15789473684210525
+  },
+  {
+   "lang": "ru",
+   "factor": "negation",
+   "direction": "A->B",
+   "tgt": "ru",
+   "n": 100,
+   "slots_changed_median": 47.5,
+   "identical_level0": 0.06,
+   "neg_clean": 98,
+   "neg_decodable": 87,
+   "level0_progress": [
+    0.23778533935546875,
+    0.30303030303030304,
+    99
+   ],
+   "level0_keep_A": 0.7929646372795105,
+   "level0_flip": 0.3218390804597701,
+   "examples": [
+    {
+     "A": "Ты должна был спать в постели",
+     "B": "Ты не должен был спать в постели",
+     "level0": "Ты должна была остаться в постелике"
+    },
+    {
+     "A": "Команду coralteraries и тренеры живут здесь в январе октября",
+     "B": "Команду coraltera coral ethers и тренеры не живут в морской среде в январе октября",
+     "level0": "Команду coraltera coralteraries и тренеры живут здесь в январе в январе"
+    },
+    {
+     "A": "Мы давно просили семь лет завершить все проектное развитие",
+     "B": "Мы не понадобились семь лет для завершения проекта развития",
+     "level0": "Мы давно не смогли полностью разрушить эту работу в течение более чем семь лет до конца разработки проекта развития всех его проектов по развитию"
+    },
+    {
+     "A": "После распада его братского брата Канахана в 1976 году он был назначен братом Китана Сенаи и избранным братом Китана в качестве избранного брата города Гаитиа в городе Канана",
+     "B": "После его смерти брат Канхана был избран в городе Кананом Сенаном в 1976 году не назначена его братом Китана Гуананана в качестве избранного брата Китана в качестве избирательной кампании",
+     "level0": "После того как его брат Саакян был в городе Кананиона в 1976 году он был назначен братом Себана Маукина в качестве мэра Мауауна в городе Канауна Маулана"
+    },
+    {
+     "A": "Если ты это делаешь Кейт умрёт его смертью",
+     "B": "Если ты это сделаюшь Кей Кейт не умруешь",
+     "level0": "Если ты это делаешь Кейт никогда не умруешь"
+    }
+   ],
+   "stack_progress": [
+    0.3376044034957886,
+    0.37373737373737376,
+    99
+   ],
+   "stack_keep_A": 0.7775428891181946,
+   "stack_flip": 0.40229885057471265,
+   "control_progress": [
+    0.26920801401138306,
+    0.2222222222222222,
+    99
+   ],
+   "control_keep_A": 0.7121644616127014,
+   "control_flip": 0.1839080459770115
+  },
+  {
+   "lang": "ru",
+   "factor": "negation",
+   "direction": "B->A",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 47.5,
+   "identical_level0": 0.06,
+   "neg_clean": 98,
+   "neg_decodable": 76,
+   "level0_progress": [
+    0.303230881690979,
+    0.29292929292929293,
+    99
+   ],
+   "level0_keep_A": 0.7871768474578857,
+   "level0_flip": 0.35526315789473684,
+   "examples": [
+    {
+     "A": "You shouldn stay in bed",
+     "B": "You should stay in bed",
+     "level0": "You shouldn sleep instead of bedtime"
+    },
+    {
+     "A": "The coral team and coaches are not living in October 2009.",
+     "B": "The coral team and coaches live in October next year in October",
+     "level0": "The coral team coral coral coral team will not live in October 2009."
+    },
+    {
+     "A": "We haven no longer needed seven years to complete the project without completion of all development projects",
+     "B": "We needed seven years to complete the project for completion of all development projects",
+     "level0": "We haven spent seven years to complete the project without completion of all the project development project"
+    },
+    {
+     "A": "After his death of his brother Kannagawa became his brother of Sikanawa in July 2006, he was not placed on his second brothership after his death in May 2009.",
+     "B": "After his death on May 7th 1975 Kanagawa became his brother of two brothers of Siberia and became Chainataya Potahia who won the election campaign in May 2010.",
+     "level0": "After his death of his brother Kannagawa became his brother of second brother Sitagawata Riveruchi who was elected as Chairman of the Second Committee on Civilization and Pomerate Province of Kandahar City during"
+    },
+    {
+     "A": "If you do this thing Kate won not die",
+     "B": "If you do this thing you kill Keith dead soon enough",
+     "level0": "If you do this thing you kill Kyle doesn not kill him"
+    }
+   ],
+   "stack_progress": [
+    0.4450482726097107,
+    0.42424242424242425,
+    99
+   ],
+   "stack_keep_A": 0.7590718269348145,
+   "stack_flip": 0.5657894736842105,
+   "control_progress": [
+    0.2924855053424835,
+    0.15151515151515152,
+    99
+   ],
+   "control_keep_A": 0.7232605814933777,
+   "control_flip": 0.18421052631578946
+  },
+  {
+   "lang": "ru",
+   "factor": "negation",
+   "direction": "B->A",
+   "tgt": "ru",
+   "n": 100,
+   "slots_changed_median": 47.5,
+   "identical_level0": 0.06,
+   "neg_clean": 98,
+   "neg_decodable": 87,
+   "level0_progress": [
+    0.221540629863739,
+    0.31313131313131315,
+    99
+   ],
+   "level0_keep_A": 0.7995232939720154,
+   "level0_flip": 0.3333333333333333,
+   "examples": [
+    {
+     "A": "Ты не должен был спать в постели",
+     "B": "Ты должна был спать в постели",
+     "level0": "Ты должна была спать спать"
+    },
+    {
+     "A": "Команду coraltera coral ethers и тренеры не живут в морской среде в январе октября",
+     "B": "Команду coralteraries и тренеры живут здесь в январе октября",
+     "level0": "Команду coraltera coralteraries won their boats and coaches won not live in October 1."
+    },
+    {
+     "A": "Мы не понадобились семь лет для завершения проекта развития",
+     "B": "Мы давно просили семь лет завершить все проектное развитие",
+     "level0": "Мы не понадобились семь лет для завершения проекта комплексного проекта развития"
+    },
+    {
+     "A": "После его смерти брат Канхана был избран в городе Кананом Сенаном в 1976 году не назначена его братом Китана Гуананана в качестве избранного брата Китана в качестве избирательной кампании",
+     "B": "После распада его братского брата Канахана в 1976 году он был назначен братом Китана Сенаи и избранным братом Китана в качестве избранного брата города Гаитиа в городе Канана",
+     "level0": "После окончания сессии его братской армии в декабре 1976 года в городе Канатан был назначен сыном второго брата Китана Кауауна в качестве избранного брата Китана в городе Канандана в"
+    },
+    {
+     "A": "Если ты это сделаюшь Кей Кейт не умруешь",
+     "B": "Если ты это делаешь Кейт умрёт его смертью",
+     "level0": "Если ты это сделаюшь Кейт Кейт не умрет"
+    }
+   ],
+   "stack_progress": [
+    0.3535611629486084,
+    0.40404040404040403,
+    99
+   ],
+   "stack_keep_A": 0.785519540309906,
+   "stack_flip": 0.45977011494252873,
+   "control_progress": [
+    0.2801786959171295,
+    0.1919191919191919,
+    99
+   ],
+   "control_keep_A": 0.733591616153717,
+   "control_flip": 0.1724137931034483
+  },
+  {
+   "lang": "ru",
+   "factor": "tense",
+   "direction": "A->B",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 2.5,
+   "identical_level0": 0.06,
+   "level0_progress": [
+    0.18605947494506836,
+    0.27835051546391754,
+    97
+   ],
+   "level0_keep_A": 0.8528191447257996,
+   "examples": [
+    {
+     "A": "The growth of trade between developing countries and South Asia is serious financial implications for development financing development",
+     "B": "The growth of trade between South and South Asia is seriously affected by development financing for development financing",
+     "level0": "The growth of trade between South and South Asia is serious financial implications for development financing development"
+    },
+    {
+     "A": "He is a terrible starving star and starving stars",
+     "B": "He was terrible stars and stars",
+     "level0": "He was a fantastic starving star and starving stars"
+    },
+    {
+     "A": "Allison still holds up",
+     "B": "He was barely able to hold up on him",
+     "level0": "Eleanor couldn barely hold him up"
+    },
+    {
+     "A": "Jaime needs you to get them outta here",
+     "B": "Jasper needed him to kill them",
+     "level0": "Jaime needed you to get them killed"
+    },
+    {
+     "A": "The development models require greater demand for higher speed applications",
+     "B": "The development model required for most advanced applications",
+     "level0": "The development models require greater use of high speed applications"
+    }
+   ],
+   "stack_progress": [
+    0.15867066383361816,
+    0.27835051546391754,
+    97
+   ],
+   "stack_keep_A": 0.8700571656227112,
+   "control_progress": [
+    0.2557140588760376,
+    0.18556701030927836,
+    97
+   ],
+   "control_keep_A": 0.7974891066551208
+  },
+  {
+   "lang": "ru",
+   "factor": "tense",
+   "direction": "A->B",
+   "tgt": "ru",
+   "n": 100,
+   "slots_changed_median": 2.5,
+   "identical_level0": 0.06,
+   "level0_progress": [
+    0.15658996999263763,
+    0.23404255319148937,
+    94
+   ],
+   "level0_keep_A": 0.8829250931739807,
+   "examples": [
+    {
+     "A": "Последствия роста торговли и инвестиций в развивающихся странах в Соединенных Штатах серьезно сказывается на достижение развития финансирования развития в области развития",
+     "B": "В Югом и Югом масштабах торговли в Югом регионе серьезно сказывается на финансовые последствия для развития финансирования развития развития в развивающихся странах и стран Югославии в связи с этим бедствием развивающимся странам и страна",
+     "level0": "Последствия роста торговли и инвестиций в развивающихся странах в Соединенных Штатах серьезно сказывается на достижение развития финансирования развития в области развития"
+    },
+    {
+     "A": "Он фантастический ужасный и голодный вид",
+     "B": "Он был ужасным и ужасным голодомом",
+     "level0": "Он был ужасным и голодным и голодным голодом"
+    },
+    {
+     "A": "Эвервис не может быть сидеть",
+     "B": "Он едва пережил",
+     "level0": "Эвервис едва ли держится"
+    },
+    {
+     "A": "Джамал должен тебя убить их",
+     "B": "Джамалли должен был выстрелить их",
+     "level0": "Джамал хотел тебя убить их"
+    },
+    {
+     "A": "Для разработки моделей необходимо более широкого применения моделей",
+     "B": "Для разработки моделей необходимо более широкого спектра данных для установки",
+     "level0": "Для разработки моделей необходимо более широкого применения для более широкого использования данных"
+    }
+   ],
+   "stack_progress": [
+    0.21925362944602966,
+    0.30851063829787234,
+    94
+   ],
+   "stack_keep_A": 0.882396936416626,
+   "control_progress": [
+    0.2362823337316513,
+    0.2127659574468085,
+    94
+   ],
+   "control_keep_A": 0.8215520977973938
+  },
+  {
+   "lang": "ru",
+   "factor": "tense",
+   "direction": "B->A",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 2.5,
+   "identical_level0": 0.06,
+   "level0_progress": [
+    0.22749567031860352,
+    0.23711340206185566,
+    97
+   ],
+   "level0_keep_A": 0.8593431115150452,
+   "examples": [
+    {
+     "A": "The growth of trade between South and South Asia is seriously affected by development financing for development financing",
+     "B": "The growth of trade between developing countries and South Asia is serious financial implications for development financing development",
+     "level0": "The growth of trade between South and South Asia has led to serious financial implications in financing development financing developments"
+    },
+    {
+     "A": "He was terrible stars and stars",
+     "B": "He is a terrible starving star and starving stars",
+     "level0": "He was terrible stars and stars"
+    },
+    {
+     "A": "He was barely able to hold up on him",
+     "B": "Allison still holds up",
+     "level0": "Several swelling were barely kept"
+    },
+    {
+     "A": "Jasper needed him to kill them",
+     "B": "Jaime needs you to get them outta here",
+     "level0": "Jasper needed him to kill them"
+    },
+    {
+     "A": "The development model required for most advanced applications",
+     "B": "The development models require greater demand for higher speed applications",
+     "level0": "The development model required by most advanced applications requires greater flexibility"
+    }
+   ],
+   "stack_progress": [
+    0.25161975622177124,
+    0.27835051546391754,
+    97
+   ],
+   "stack_keep_A": 0.8711909651756287,
+   "control_progress": [
+    0.2772263288497925,
+    0.24742268041237114,
+    97
+   ],
+   "control_keep_A": 0.7833120226860046
+  },
+  {
+   "lang": "ru",
+   "factor": "tense",
+   "direction": "B->A",
+   "tgt": "ru",
+   "n": 100,
+   "slots_changed_median": 2.5,
+   "identical_level0": 0.06,
+   "level0_progress": [
+    0.20792101323604584,
+    0.2127659574468085,
+    94
+   ],
+   "level0_keep_A": 0.8764477372169495,
+   "examples": [
+    {
+     "A": "В Югом и Югом масштабах торговли в Югом регионе серьезно сказывается на финансовые последствия для развития финансирования развития развития в развивающихся странах и стран Югославии в связи с этим бедствием развивающимся странам и страна",
+     "B": "Последствия роста торговли и инвестиций в развивающихся странах в Соединенных Штатах серьезно сказывается на достижение развития финансирования развития в области развития",
+     "level0": "В значительной степени рост торговли между странами Югомии и Югомией является серьезной проблемой финансирования развития финансирования развития развития в целях развития развития стран Югославии и развития стран Югославии в целом и наименее разви"
+    },
+    {
+     "A": "Он был ужасным и ужасным голодомом",
+     "B": "Он фантастический ужасный и голодный вид",
+     "level0": "У него ужасные фантастические ужасы и ужасные планы"
+    },
+    {
+     "A": "Он едва пережил",
+     "B": "Эвервис не может быть сидеть",
+     "level0": "Клянись едва ли сдержали"
+    },
+    {
+     "A": "Джамалли должен был выстрелить их",
+     "B": "Джамал должен тебя убить их",
+     "level0": "Джамалла должен был выстрелить их"
+    },
+    {
+     "A": "Для разработки моделей необходимо более широкого спектра данных для установки",
+     "B": "Для разработки моделей необходимо более широкого применения моделей",
+     "level0": "Для разработки моделей необходимо более широкой технической помощи для использования данных"
+    }
+   ],
+   "stack_progress": [
+    0.1996297538280487,
+    0.2765957446808511,
+    94
+   ],
+   "stack_keep_A": 0.883884072303772,
+   "control_progress": [
+    0.22150811553001404,
+    0.23404255319148937,
+    94
+   ],
+   "control_keep_A": 0.8101956844329834
+  },
+  {
+   "lang": "ja",
+   "factor": "negation",
+   "direction": "A->B",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 53.0,
+   "identical_level0": 0.02,
+   "neg_clean": 100,
+   "neg_decodable": 71,
+   "level0_progress": [
+    0.34821727871894836,
+    0.41414141414141414,
+    99
+   ],
+   "level0_keep_A": 0.7745519876480103,
+   "level0_flip": 0.3380281690140845,
+   "examples": [
+    {
+     "A": "She wants me to come visit her",
+     "B": "She didn ́t think she wanted me coming back here",
+     "level0": "She says she wants me to come with me"
+    },
+    {
+     "A": "The German talk has changed much more than just Nazis",
+     "B": "There was no more important matter than Germany was taken from Germany",
+     "level0": "The word came from Germany to the greatest extent of this matter was not just a change in Germany"
+    },
+    {
+     "A": "You will soon come along with Xtrem Wayway",
+     "B": "Don ́t ever change your XX outfit",
+     "level0": "You won not let Xmanman go ahead"
+    },
+    {
+     "A": "He was leaving school for a while",
+     "B": "He hasn been absent for some time",
+     "level0": "He has been absent for school days"
+    },
+    {
+     "A": "So she moved to Odyssey and wanted to buy her house for 40 years now",
+     "B": "So she moved to Odey and wanted to buy houses around 40 years ago instead of partying party houses",
+     "level0": "So I moved to Odey onto seaside to buy 40 years ago and participate in this campaign"
+    }
+   ],
+   "stack_progress": [
+    0.4386356472969055,
+    0.4444444444444444,
+    99
+   ],
+   "stack_keep_A": 0.7736290097236633,
+   "stack_flip": 0.4507042253521127,
+   "control_progress": [
+    0.3448742926120758,
+    0.18181818181818182,
+    99
+   ],
+   "control_keep_A": 0.6890499591827393,
+   "control_flip": 0.19718309859154928
+  },
+  {
+   "lang": "ja",
+   "factor": "negation",
+   "direction": "A->B",
+   "tgt": "ja",
+   "n": 100,
+   "slots_changed_median": 53.0,
+   "identical_level0": 0.02,
+   "neg_clean": 100,
+   "neg_decodable": 59,
+   "level0_progress": [
+    0.3259563148021698,
+    0.3854166666666667,
+    96
+   ],
+   "level0_keep_A": 0.735105574131012,
+   "level0_flip": 0.4406779661016949,
+   "examples": [
+    {
+     "A": "お前が彼女に会いに来てくれると",
+     "B": "私は彼女に会いたいと思わない",
+     "level0": "私は彼女に来ないと言ってる"
+    },
+    {
+     "A": "その話はドイツより重要だった",
+     "B": "そのドイツでは重要なのはドイツではなかった",
+     "level0": "その話はドイツより重要だった"
+    },
+    {
+     "A": "お前はX線まで行こう",
+     "B": "お前はX線を止めない",
+     "level0": "お前はX線マンに任せろ"
+    },
+    {
+     "A": "その学校はしばらく休暇をとる",
+     "B": "その間彼は学校に休暇をとる",
+     "level0": "その学校にはしばらく休暇をとる"
+    },
+    {
+     "A": "40年間のアデカデカと結婚する為に",
+     "B": "40年間のパーティーで引っ越して",
+     "level0": "40年間のアデカデカデールに引っ越して"
+    }
+   ],
+   "stack_progress": [
+    0.3391191363334656,
+    0.3958333333333333,
+    96
+   ],
+   "stack_keep_A": 0.7493131756782532,
+   "stack_flip": 0.5254237288135594,
+   "control_progress": [
+    0.29152610898017883,
+    0.28125,
+    96
+   ],
+   "control_keep_A": 0.6852542161941528,
+   "control_flip": 0.2542372881355932
+  },
+  {
+   "lang": "ja",
+   "factor": "negation",
+   "direction": "B->A",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 53.0,
+   "identical_level0": 0.02,
+   "neg_clean": 100,
+   "neg_decodable": 71,
+   "level0_progress": [
+    0.3725309669971466,
+    0.3434343434343434,
+    99
+   ],
+   "level0_keep_A": 0.7708876132965088,
+   "level0_flip": 0.3380281690140845,
+   "examples": [
+    {
+     "A": "She didn ́t think she wanted me coming back here",
+     "B": "She wants me to come visit her",
+     "level0": "She didn ́t want me coming to her"
+    },
+    {
+     "A": "There was no more important matter than Germany was taken from Germany",
+     "B": "The German talk has changed much more than just Nazis",
+     "level0": "There was no more important matter than Germany than Germany"
+    },
+    {
+     "A": "Don ́t ever change your XX outfit",
+     "B": "You will soon come along with Xtrem Wayway",
+     "level0": "Don ́t ever get dressed up with Xtremo"
+    },
+    {
+     "A": "He hasn been absent for some time",
+     "B": "He was leaving school for a while",
+     "level0": "He was absent for a while"
+    },
+    {
+     "A": "So she moved to Odey and wanted to buy houses around 40 years ago instead of partying party houses",
+     "B": "So she moved to Odyssey and wanted to buy her house for 40 years now",
+     "level0": "So she moved out to Odey and wanted to buy her house over 40 years ago"
+    }
+   ],
+   "stack_progress": [
+    0.4531661570072174,
+    0.41414141414141414,
+    99
+   ],
+   "stack_keep_A": 0.7640814185142517,
+   "stack_flip": 0.5211267605633803,
+   "control_progress": [
+    0.36285072565078735,
+    0.31313131313131315,
+    99
+   ],
+   "control_keep_A": 0.6769016981124878,
+   "control_flip": 0.15492957746478872
+  },
+  {
+   "lang": "ja",
+   "factor": "negation",
+   "direction": "B->A",
+   "tgt": "ja",
+   "n": 100,
+   "slots_changed_median": 53.0,
+   "identical_level0": 0.02,
+   "neg_clean": 100,
+   "neg_decodable": 59,
+   "level0_progress": [
+    0.3289448916912079,
+    0.3645833333333333,
+    96
+   ],
+   "level0_keep_A": 0.795200526714325,
+   "level0_flip": 0.3898305084745763,
+   "examples": [
+    {
+     "A": "私は彼女に会いたいと思わない",
+     "B": "お前が彼女に会いに来てくれると",
+     "level0": "私は彼女が私を連れてきたのかしら"
+    },
+    {
+     "A": "そのドイツでは重要なのはドイツではなかった",
+     "B": "その話はドイツより重要だった",
+     "level0": "そのドイツでは重要なのは"
+    },
+    {
+     "A": "お前はX線を止めない",
+     "B": "お前はX線まで行こう",
+     "level0": "お前はX線を止めてくれ"
+    },
+    {
+     "A": "その間彼は学校に休暇をとる",
+     "B": "その学校はしばらく休暇をとる",
+     "level0": "その間彼はしばらく休暇をとる"
+    },
+    {
+     "A": "40年間のパーティーで引っ越して",
+     "B": "40年間のアデカデカと結婚する為に",
+     "level0": "40年間のパーティーで引っ越して"
+    }
+   ],
+   "stack_progress": [
+    0.45944447815418243,
+    0.46875,
+    96
+   ],
+   "stack_keep_A": 0.7563753724098206,
+   "stack_flip": 0.6440677966101694,
+   "control_progress": [
+    0.2956041246652603,
+    0.2916666666666667,
+    96
+   ],
+   "control_keep_A": 0.68426513671875,
+   "control_flip": 0.288135593220339
+  },
+  {
+   "lang": "ja",
+   "factor": "tense",
+   "direction": "A->B",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 2.0,
+   "identical_level0": 0.2,
+   "level0_progress": [
+    0.16511130332946777,
+    0.18181818181818182,
+    99
+   ],
+   "level0_keep_A": 0.8530709743499756,
+   "examples": [
+    {
+     "A": "Because you know about what happened to you recently showed up so far away",
+     "B": "When you knew about her being surprised about how long ago you were gone along with her",
+     "level0": "Because after all you know about this story I wondered how much you were doing here long enough to get away from here"
+    },
+    {
+     "A": "Your profile was specifically discussed by Dirk Duck on his career history",
+     "B": "Your profile was specifically reflected in the profile of your career career in Cambridge afterwards in his career history",
+     "level0": "Your profile is specifically reflected by Dick Duckoff University at the beginning of his career"
+    },
+    {
+     "A": "Earl brought him up",
+     "B": "He brought him along with an angelic suitcase",
+     "level0": "He brought him into custody"
+    },
+    {
+     "A": "I don ́t play tennis lessons at school anymore",
+     "B": "I didn ́t play tennis lessons at school",
+     "level0": "You don ́t play tennis lessons at school anymore"
+    },
+    {
+     "A": "New lung cancer is injected after injection",
+     "B": "New lung cancer was injected into her body afterwards",
+     "level0": "New lung cancer is injected after injection"
+    }
+   ],
+   "stack_progress": [
+    0.1866559386253357,
+    0.25252525252525254,
+    99
+   ],
+   "stack_keep_A": 0.8544411659240723,
+   "control_progress": [
+    0.30312907695770264,
+    0.26262626262626265,
+    99
+   ],
+   "control_keep_A": 0.7641244530677795
+  },
+  {
+   "lang": "ja",
+   "factor": "tense",
+   "direction": "A->B",
+   "tgt": "ja",
+   "n": 100,
+   "slots_changed_median": 2.0,
+   "identical_level0": 0.2,
+   "level0_progress": [
+    0.042137742042541504,
+    0.16483516483516483,
+    91
+   ],
+   "level0_keep_A": 0.8673684597015381,
+   "examples": [
+    {
+     "A": "お前が知ったら驚いた",
+     "B": "お前が知っていた時も驚いた",
+     "level0": "お前が知ったら お前が長い間から遠くに"
+    },
+    {
+     "A": "その顔はデュラントに似ている",
+     "B": "お前はデュラントのプロファイルに詳しい",
+     "level0": "お前の顔はデュラントで"
+    },
+    {
+     "A": "Eシュルズは持ってる",
+     "B": "そのエリックは彼に運び込んだ",
+     "level0": "Eシュルは彼を連れてきた"
+    },
+    {
+     "A": "私はテニスでテニスを学んだ",
+     "B": "私はテキサスで学校に行かなかった",
+     "level0": "私はテニスでテニスを学んだ"
+    },
+    {
+     "A": "新肺炎は注射する",
+     "B": "新体は注射された",
+     "level0": "新肺炎は注射する"
+    }
+   ],
+   "stack_progress": [
+    0.18444329500198364,
+    0.26373626373626374,
+    91
+   ],
+   "stack_keep_A": 0.8673132061958313,
+   "control_progress": [
+    0.1988011598587036,
+    0.17582417582417584,
+    91
+   ],
+   "control_keep_A": 0.7964557409286499
+  },
+  {
+   "lang": "ja",
+   "factor": "tense",
+   "direction": "B->A",
+   "tgt": "en",
+   "n": 100,
+   "slots_changed_median": 2.0,
+   "identical_level0": 0.2,
+   "level0_progress": [
+    0.23874437808990479,
+    0.25252525252525254,
+    99
+   ],
+   "level0_keep_A": 0.8339297771453857,
+   "examples": [
+    {
+     "A": "When you knew about her being surprised about how long ago you were gone along with her",
+     "B": "Because you know about what happened to you recently showed up so far away",
+     "level0": "When you knew about her very unexpected moment ago you were too long gone"
+    },
+    {
+     "A": "Your profile was specifically reflected in the profile of your career career in Cambridge afterwards in his career history",
+     "B": "Your profile was specifically discussed by Dirk Duck on his career history",
+     "level0": "Your profile was specifically discussed by Donald Durand during his career career studies in New York City and then became part of your profile in the field of personality and professionalism in the field of employment and social relations amongst others who"
+    },
+    {
+     "A": "He brought him along with an angelic suitcase",
+     "B": "Earl brought him up",
+     "level0": "All right there are those eggs coming back inside the doorstep"
+    },
+    {
+     "A": "I didn ́t play tennis lessons at school",
+     "B": "I don ́t play tennis lessons at school anymore",
+     "level0": "I didn ́t play tennis lessons at school anymore"
+    },
+    {
+     "A": "New lung cancer was injected into her body afterwards",
+     "B": "New lung cancer is injected after injection",
+     "level0": "New lung cancer was injected into her body afterwards"
+    }
+   ],
+   "stack_progress": [
+    0.2214360237121582,
+    0.2727272727272727,
+    99
+   ],
+   "stack_keep_A": 0.8399367332458496,
+   "control_progress": [
+    0.28949815034866333,
+    0.2727272727272727,
+    99
+   ],
+   "control_keep_A": 0.7698907256126404
+  },
+  {
+   "lang": "ja",
+   "factor": "tense",
+   "direction": "B->A",
+   "tgt": "ja",
+   "n": 100,
+   "slots_changed_median": 2.0,
+   "identical_level0": 0.2,
+   "level0_progress": [
+    0.038537949323654175,
+    0.21978021978021978,
+    91
+   ],
+   "level0_keep_A": 0.8730168342590332,
+   "examples": [
+    {
+     "A": "お前が知っていた時も驚いた",
+     "B": "お前が知ったら驚いた",
+     "level0": "お前が知ったら驚き目が覚めてた"
+    },
+    {
+     "A": "お前はデュラントのプロファイルに詳しい",
+     "B": "その顔はデュラントに似ている",
+     "level0": "お前はデュラントにプロキシスコを詳しく述べた"
+    },
+    {
+     "A": "そのエリックは彼に運び込んだ",
+     "B": "Eシュルズは持ってる",
+     "level0": "そのエッシャーは持ってる"
+    },
+    {
+     "A": "私はテキサスで学校に行かなかった",
+     "B": "私はテニスでテニスを学んだ",
+     "level0": "私はテキサス学校で学校に行かなかった"
+    },
+    {
+     "A": "新体は注射された",
+     "B": "新肺炎は注射する",
+     "level0": "新体は注射された"
+    }
+   ],
+   "stack_progress": [
+    0.03185883164405823,
+    0.27472527472527475,
+    91
+   ],
+   "stack_keep_A": 0.8840056657791138,
+   "control_progress": [
+    0.08870109915733337,
+    0.24175824175824176,
+    91
+   ],
+   "control_keep_A": 0.8177368640899658
+  }
+ ]
+}

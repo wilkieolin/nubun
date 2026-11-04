@@ -1092,7 +1092,45 @@ medium run under way.** Spec and results in `augment/README.md` §9-10.
 
     The cause is common to both, still to bisect
     (`cerebras/HANDOFF_MINPAIRS.md`).
-- **Open: the substitution test (C2), the readout, is not written yet.**
+- **Substitution test (C2), first results (2026-11-04,
+  `substitution_test.py`, `results/phase9_pad64/substitution/`).** 100 pairs
+  per factor from each of de, fr, es, ru, ja, decoded into English and the
+  source language, rows padded to 64. Negation is scored by a negator list
+  (97.5-99.7% on reference text); any factor by MiniLM, as the share of
+  outputs closer to B's reconstruction than to A's.
+  - **Transplant** (in A's codes, set the level-0 slots where A and B differ
+    to B's codes):
+
+    | | slots changed (of 64) | negation flips: level 0 / stack / control | tense, closer to B: level 0 / control |
+    |---|---|---|---|
+    | seed 1, 50k | 59 | 58% / 69% / 29% | 25% / 23% |
+    | mix, 50k | 62 | 69% / 78% / 30% | 18% / 18% |
+    | seed 2, 500k | 52 | 33% / 46% / 17% | 20% / 21% |
+
+    Flips are counted on pairs whose two reconstructions already show the
+    right polarity (1300-1600 of 1964). Control: the same slots set to random
+    level-0 codes; it flips about 30% at 50k because rewriting most of level
+    0 garbles the output.
+  - **Radicals** (seed 2, 500k; the codes `--mode enrich` ranks highest for
+    negation): inserting code 73, 103 or 5 at the slots it usually holds
+    negates 35% / 57% / 40% of affirmative outputs, against 5-7% for a random
+    code in the same slots, with the same meaning kept (MiniLM 0.64-0.78,
+    equal to the control's). Removing it un-negates 20-39%.
+  - What this says:
+    - **Level 0 causally carries negation, but holistically.** Each negation
+      code fills 51-55 of a sentence's 64 slots, and six of them split the
+      negated sentences between them (5, 73, 80, 50, 103, 37 cover 68%).
+      Negation cannot be added without rewriting most of level 0. Code 5 is
+      one of six, not the negation radical.
+    - **Tense is not in level 0.** Pairs differ in 1-3 slots, and moving
+      them does no better than the control. MiniLM is weak on tense, so this
+      is the less certain result.
+    - **The mix put more negation into level 0** (flips 58% to 69%), which
+      is also why its negation pairs moved apart: the pairs differ in more
+      slots because level 0 encodes the difference, as whole-sentence codes.
+    - Branch 2's target is now measurable: few slots changed and a high
+      flip rate. Every model so far reaches the flip rate only by changing
+      most of level 0.
 
 **Readout for both: the substitution test (C2).** Swap a stable radical in or
 out of real encodings and decode: code 5 (negation) and 102 (today) in seed
